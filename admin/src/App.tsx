@@ -225,11 +225,12 @@ async function decryptSettings(): Promise<Settings | null> {
     const key = await getCryptoKey(base64ToBytes(parsed.salt));
     const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(base64ToBytes(parsed.iv)) }, key, base64ToBytes(parsed.data));
     const saved = { ...defaultSettings, ...JSON.parse(new TextDecoder().decode(decrypted)) } as Settings;
+    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     return {
       ...saved,
-      memoriesBaseUrl: MEMORIES_DEFAULT_BASE,
+      memoriesBaseUrl: isLocalDev ? MEMORIES_DEFAULT_BASE : MEMORIES_REMOTE_BASE,
       adminPath: defaultSettings.adminPath,
-      publicApiUrl: PUBLIC_API_DEFAULT,
+      publicApiUrl: isLocalDev ? PUBLIC_API_DEFAULT : PUBLIC_API_REMOTE,
     };
   } catch {
     localStorage.removeItem(SETTINGS_KEY);
@@ -350,7 +351,7 @@ export default function App() {
     }
     setBusy('token');
     try {
-      const url = toUrl(settings.adminPath);
+      const url = toUrl(joinUrl(settings.memoriesBaseUrl, settings.adminPath));
       url.searchParams.set('key', cleanKey);
       const nextToken = await readJson<TokenResponse>(await fetch(url));
       setToken(nextToken);
