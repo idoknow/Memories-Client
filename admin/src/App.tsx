@@ -351,7 +351,9 @@ export default function App() {
     }
     setBusy('token');
     try {
-      const url = toUrl(settings.adminPath);
+      const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const tokenBase = isLocalDev ? '' : MEMORIES_REMOTE_BASE;
+    const url = tokenBase ? new URL(joinUrl(tokenBase, settings.adminPath)) : toUrl(settings.adminPath);
       url.searchParams.set('key', cleanKey);
       const nextToken = await readJson<TokenResponse>(await fetch(url));
       setToken(nextToken);
