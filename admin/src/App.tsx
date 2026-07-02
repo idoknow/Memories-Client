@@ -25,7 +25,7 @@ const MAX_LIST_LIMIT = 20;
 const LAST_VIEWED_KEY = 'memories-admin:last-viewed-id';
 const SETTINGS_KEY = 'memories-admin:settings:v1';
 const PASSPHRASE_KEY = 'memories-admin:device-key:v1';
-const FIXED_CDN_DOMAIN = 'default';
+const FIXED_CDN_DOMAIN = 'cloudflarecnimg.scdn.io';
 const FIXED_STORAGE_DESTINATION = 'telegram';
 
 const outputFormats = ['auto', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'webp_animated'];
@@ -169,10 +169,18 @@ function toUrl(value: string) {
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: { error?: string; message?: string } | null = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
   if (!response.ok) {
-    const message = data?.error || data?.message || response.statusText || '请求失败';
-    throw new Error(message);
+    const message = data?.error || data?.message || text.trim() || response.statusText || '请求失败';
+    throw new Error(`${response.status} ${message}`);
+  }
+  if (text && !data) {
+    throw new Error('响应不是有效 JSON');
   }
   return data as T;
 }
@@ -642,7 +650,7 @@ export default function App() {
             <label>输出格式<select value={outputFormat} onChange={(event) => setOutputFormat(event.target.value)}>{outputFormats.map((format) => <option key={format}>{format}</option>)}</select></label>
             <label>存储位置<input value="Telegram" readOnly /></label>
           </div>
-          <label>CDN 域名<input value="自动选择" readOnly /></label>
+          <label>CDN 域名<input value="cloudflarecnimg.scdn.io" readOnly /></label>
           <button className="dark" disabled={busy === 'upload'}>{busy === 'upload' ? <Loader2 className="spin" /> : <UploadCloud />}上传并写入 API</button>
         </form>
         {uploadResult?.url && <div className="result-card"><img src={uploadResult.url} alt="上传结果预览" loading="lazy" /><div><strong>{uploadResult.data?.filename || '上传成功'}</strong><p>{uploadResult.data?.storage_backend ? `存储：${storageLabel(uploadResult.data.storage_backend)}` : uploadResult.message}</p><button className="secondary" onClick={() => copyText(uploadResult.url || '')}><Copy />复制链接</button></div></div>}
