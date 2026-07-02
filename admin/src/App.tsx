@@ -597,7 +597,7 @@ export default function App() {
       <section className="hero">
         <div>
           <p className="eyebrow">Memories Serves / Public CDN</p>
-          <h1>Memories控制台</h1>
+          <h1>Memories</h1>
           <p className="hero-copy">上传、查询公开元数据、管理 WebDAV 备份，并在预览时快速删除不合要求的记录。</p>
         </div>
         <div className="hero-actions">
