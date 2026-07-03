@@ -47,6 +47,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -89,6 +92,8 @@ public class MainActivity extends Activity {
     private static final int REQUEST_DOWNLOAD_FOLDER = 12;
     private static final String UPLOAD_CHANNEL_ID = "memories_uploads";
     private static final int UPLOAD_NOTIFICATION_ID = 1207;
+    private static final String DOWNLOAD_CHANNEL_ID = "memories_downloads";
+    private static final int DOWNLOAD_NOTIFICATION_ID = 1208;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ApiClient api = new ApiClient();
@@ -107,9 +112,11 @@ public class MainActivity extends Activity {
     private TextView title;
     private long nextAfterId = 0;
     private boolean galleryLoading;
+    private final java.util.Set<String> syncedUrls = new java.util.HashSet<>();
     private String selectedOutputFormat = AppConfig.DEFAULT_OUTPUT_FORMAT;
     private ServerSocket oauthServer;
     private FrameLayout previewOverlay;
+    private FrameLayout webViewOverlay;
     private int previewIndex;
     private Bitmap previewBitmap;
     private ImageItem previewItem;
@@ -117,6 +124,7 @@ public class MainActivity extends Activity {
     private View previewMenuDim;
     private Bitmap pendingDownloadBitmap;
     private ImageItem pendingDownloadItem;
+    private boolean waitingForDownloadFolder;
     private float previewScale = 1f;
     private float previewRotation = 0f;
     private boolean previewFlippedHorizontal;
@@ -125,12 +133,25 @@ public class MainActivity extends Activity {
     private float previewTranslateY;
     private long lastBackPressTime;
     private int currentTab;
+    private boolean batchSelectMode;
+    private final java.util.Set<Integer> batchSelectedIndices = new java.util.HashSet<>();
+    private GridLayout galleryGrid;
+    private LinearLayout shellHeader;
+    private ValueAnimator navBorderAnim;
 
     @Override
     public void onBackPressed() {
         if (previewMenuDim != null && previewMenuDim.getParent() != null) {
             previewOverlay.removeView(previewMenuDim);
             previewMenuDim = null;
+            return;
+        }
+        if (webViewOverlay != null && webViewOverlay.getParent() != null) {
+            hideWebViewOverlay();
+            return;
+        }
+        if (batchSelectMode) {
+            exitBatchMode();
             return;
         }
         if (previewOverlay != null && previewOverlay.getVisibility() == View.VISIBLE) {
@@ -157,11 +178,27 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 状态栏透明，内容延伸到状态栏下方
+        if (Build.VERSION.SDK_INT >= 21) {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+        }
         AppConfig.load(this);
         store = new LocalStore(this);
         imageCache = new ImageCache(this);
-        theme = ThemeConfig.load(store.prefs());
         session = store.loadSession();
+        theme = ThemeConfig.load(store.prefs(), session.qq);
+        List<UploadTask> saved = store.loadUploadTasks();
+        for (UploadTask t : saved) {
+            // 重启后 UPLOADING 状态的任务重置为 WAITING
+            if (t.status == UploadTask.UPLOADING) {
+                t.status = UploadTask.WAITING;
+                t.progress = 0;
+                t.message = "等待上传";
+            }
+        }
+        uploadTasks.addAll(saved);
         createUploadNotificationChannel();
         requestInitialPermissions();
         showSplash();
@@ -174,17 +211,24 @@ public class MainActivity extends Activity {
         if (requestCode == REQUEST_PICK_IMAGES && resultCode == RESULT_OK && data != null) {
             addPickedImages(data);
             showUpload();
-        } else if (requestCode == REQUEST_DOWNLOAD_FOLDER && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            Uri uri = data.getData();
-            int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            getContentResolver().takePersistableUriPermission(uri, flags);
-            store.saveDownloadFolderUri(uri.toString());
-            if (pendingDownloadBitmap != null && pendingDownloadItem != null) {
-                saveBitmapToDownloadFolder(pendingDownloadBitmap, pendingDownloadItem);
+        } else if (requestCode == REQUEST_DOWNLOAD_FOLDER) {
+            waitingForDownloadFolder = false;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                Uri uri = data.getData();
+                int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                getContentResolver().takePersistableUriPermission(uri, flags);
+                store.saveDownloadFolderUri(uri.toString());
+                if (pendingDownloadBitmap != null && pendingDownloadItem != null) {
+                    saveBitmapToDownloadFolder(pendingDownloadBitmap, pendingDownloadItem);
+                    pendingDownloadBitmap = null;
+                    pendingDownloadItem = null;
+                } else {
+                    showProfileStoragePage();
+                }
+            } else {
+                // 用户取消选择下载目录，清除等待状态
                 pendingDownloadBitmap = null;
                 pendingDownloadItem = null;
-            } else {
-                showProfileStoragePage();
             }
         }
     }
@@ -363,7 +407,7 @@ public class MainActivity extends Activity {
         root.addView(linkRow, matchWrap());
 
         // 登录按钮
-        Button loginBtn = button("校园墙登录", "ic_user", view -> startOAuth());
+        Button loginBtn = button("校园墙登录", "ic_profile", view -> startOAuth());
         loginBtn.setGravity(Gravity.CENTER);
         loginBtn.setEnabled(false);
         loginBtn.setAlpha(0.45f);
@@ -403,7 +447,6 @@ public class MainActivity extends Activity {
         }
         String state = UUID.randomUUID().toString();
         String codeVerifier = createCodeVerifier();
-        listenForOAuth(state, codeVerifier);
         Uri uri = Uri.parse(AppConfig.OAUTH_AUTHORIZE_URL).buildUpon()
                 .appendQueryParameter("response_type", "code")
                 .appendQueryParameter("client_id", AppConfig.OAUTH_CLIENT_ID)
@@ -413,8 +456,147 @@ public class MainActivity extends Activity {
                 .appendQueryParameter("code_challenge", createCodeChallenge(codeVerifier))
                 .appendQueryParameter("code_challenge_method", "S256")
                 .build();
-        startActivity(new Intent(Intent.ACTION_VIEW, uri));
-        toast("请在浏览器完成授权");
+        showWebViewOverlay(uri.toString(), state, codeVerifier);
+    }
+
+    private void showWebViewOverlay(String url, String expectedState, String codeVerifier) {
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setBackgroundColor(Color.argb(200, 0, 0, 0));
+        overlay.setClickable(true);
+
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int cardW = screenW - dp(48);
+        int cardH = (int) (screenH * 0.72f);
+
+        // WebView（圆角白色卡片）
+        WebView webView = new WebView(this);
+        webView.getSettings().setJavaScriptEnabled(true);
+        webView.getSettings().setDomStorageEnabled(true);
+        webView.getSettings().setBuiltInZoomControls(false);
+        webView.setBackgroundColor(Color.WHITE);
+        if (Build.VERSION.SDK_INT >= 21) {
+            webView.setClipToOutline(true);
+            GradientDrawable wvBg = new GradientDrawable();
+            wvBg.setColor(Color.WHITE);
+            wvBg.setCornerRadius(dp(20));
+            webView.setBackground(wvBg);
+        }
+
+        FrameLayout.LayoutParams wvParams = new FrameLayout.LayoutParams(cardW, cardH);
+        wvParams.gravity = Gravity.CENTER;
+        overlay.addView(webView, wvParams);
+
+        // 右上角关闭按钮（浮动在卡片上方）
+        ImageView closeBtn = new ImageView(this);
+        closeBtn.setImageResource(getResources().getIdentifier("ic_close", "drawable", getPackageName()));
+        closeBtn.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN);
+        closeBtn.setPadding(dp(6), dp(6), dp(6), dp(6));
+        closeBtn.setBackground(roundedDrawable(Color.argb(140, 0, 0, 0), dp(999)));
+        closeBtn.setOnClickListener(v -> hideWebViewOverlay());
+        closeBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(36), dp(36));
+        closeParams.gravity = Gravity.TOP | Gravity.END;
+        // 定位到卡片右上角外侧
+        int closeMarginTop = (screenH - cardH) / 2 - dp(12);
+        int closeMarginRight = (screenW - cardW) / 2 - dp(12);
+        closeParams.setMargins(0, Math.max(0, closeMarginTop), Math.max(0, closeMarginRight), 0);
+        overlay.addView(closeBtn, closeParams);
+
+        // 加载指示器
+        ProgressBar progress = new ProgressBar(this);
+        progress.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= 21) {
+            progress.setIndeterminateTintList(ColorStateList.valueOf(theme.primaryButton));
+        }
+        FrameLayout.LayoutParams progParams = new FrameLayout.LayoutParams(dp(40), dp(40));
+        progParams.gravity = Gravity.CENTER;
+        overlay.addView(progress, progParams);
+
+        webView.setWebViewClient(new WebViewClient() {
+            private boolean codeExchanged;
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String requestUrl = request.getUrl().toString();
+                if (requestUrl.startsWith(AppConfig.OAUTH_REDIRECT_URI)) {
+                    if (codeExchanged) return true;
+                    codeExchanged = true;
+                    Uri redirectUri = Uri.parse(requestUrl);
+                    String code = redirectUri.getQueryParameter("code");
+                    String state = redirectUri.getQueryParameter("state");
+                    if (code == null || code.isEmpty() || !expectedState.equals(state)) {
+                        mainHandler.post(() -> {
+                            toast("OAuth 回调无效");
+                            hideWebViewOverlay();
+                        });
+                        return true;
+                    }
+                    mainHandler.post(() -> {
+                        webView.setVisibility(View.GONE);
+                        progress.setVisibility(View.VISIBLE);
+                    });
+                    api.exchangeCode(code, codeVerifier, uiCallback(token -> api.userInfo(token, uiCallback(user -> {
+                        session = user;
+                        store.saveSession(user);
+                        theme = ThemeConfig.load(store.prefs(), session.qq);
+                        mainHandler.post(() -> {
+                            toast("登录成功");
+                            hideWebViewOverlay();
+                            // 确保正确切换到主界面
+                            shellWrapper = null;
+                            showShell(0);
+                        });
+                    }, message -> {
+                        mainHandler.post(() -> {
+                            toast("获取用户信息失败: " + message);
+                            hideWebViewOverlay();
+                        });
+                    })), message -> {
+                        mainHandler.post(() -> {
+                            toast("令牌交换失败: " + message);
+                            hideWebViewOverlay();
+                        });
+                    }));
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                progress.setVisibility(View.VISIBLE);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                progress.setVisibility(View.GONE);
+            }
+        });
+
+        webView.loadUrl(url);
+
+        // 将 overlay 添加到 DecorView 的内容层
+        ViewGroup contentParent = (ViewGroup) getWindow().getDecorView().findViewById(android.R.id.content);
+        contentParent.addView(overlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        webViewOverlay = overlay;
+    }
+
+    private void hideWebViewOverlay() {
+        if (webViewOverlay == null) return;
+        // 清除 WebView cookie，确保下次登录是全新会话
+        if (Build.VERSION.SDK_INT >= 21) {
+            android.webkit.CookieManager.getInstance().removeAllCookies(null);
+        } else {
+            android.webkit.CookieManager.getInstance().removeAllCookie();
+        }
+        View parent = (View) webViewOverlay.getParent();
+        if (parent instanceof ViewGroup) {
+            ((ViewGroup) parent).removeView(webViewOverlay);
+        }
+        webViewOverlay = null;
     }
 
     private void listenForOAuth(String expectedState, String codeVerifier) {
@@ -456,6 +638,7 @@ public class MainActivity extends Activity {
                 api.exchangeCode(code, codeVerifier, uiCallback(token -> api.userInfo(token, uiCallback(user -> {
                     session = user;
                     store.saveSession(user);
+                    theme = ThemeConfig.load(store.prefs(), session.qq);
                     showShell(0);
                 }, this::toast)), this::toast));
             } catch (Exception exception) {
@@ -507,31 +690,51 @@ public class MainActivity extends Activity {
         currentTab = selectedTab;
         root = vertical();
         applyBackground(root);
+        // 状态栏高度
+        int statusBarH = 0;
+        if (Build.VERSION.SDK_INT >= 23) {
+            android.graphics.Rect rect = new android.graphics.Rect();
+            getWindow().getDecorView().getWindowVisibleDisplayFrame(rect);
+            statusBarH = rect.top;
+        }
+        if (statusBarH <= 0) statusBarH = dp(24);
         LinearLayout header = horizontal();
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(18), dp(8), dp(18), dp(4));
+        header.setPadding(dp(18), statusBarH + dp(4), dp(18), dp(4));
         title = text(tabTitle(selectedTab), 22, true);
         header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        shellHeader = header;
         root.addView(header, matchWrap());
         content = new FrameLayout(this);
         addPageSwipe(content);
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        FrameLayout navWrapper = new FrameLayout(this);
         LinearLayout nav = horizontal();
         nav.setPadding(dp(16), dp(4), dp(16), dp(4));
         nav.setBackground(navBarDrawable());
         LinearLayout leftBox = horizontal();
         leftBox.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        leftBox.addView(navButton("广场", "ic_plaza", selectedTab == 0, view -> showShell(0)), new LinearLayout.LayoutParams(dp(48), dp(44)));
-        nav.addView(leftBox, new LinearLayout.LayoutParams(0, dp(44), 1));
+        leftBox.addView(navButton("广场", "ic_plaza", selectedTab == 0, view -> showShell(0)), new LinearLayout.LayoutParams(dp(48), dp(48)));
+        nav.addView(leftBox, new LinearLayout.LayoutParams(0, dp(48), 1));
         LinearLayout centerBox = horizontal();
         centerBox.setGravity(Gravity.CENTER);
-        centerBox.addView(navButton("上传", "ic_upload", selectedTab == 1, view -> showShell(1)), new LinearLayout.LayoutParams(dp(48), dp(44)));
-        nav.addView(centerBox, new LinearLayout.LayoutParams(0, dp(44), 1));
+        centerBox.addView(navButton("上传", "ic_upload", selectedTab == 1, view -> showShell(1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
+        nav.addView(centerBox, new LinearLayout.LayoutParams(0, dp(48), 1));
         LinearLayout rightBox = horizontal();
         rightBox.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        rightBox.addView(navButton("个人", "ic_profile", selectedTab == 2, view -> showShell(2)), new LinearLayout.LayoutParams(dp(48), dp(44)));
-        nav.addView(rightBox, new LinearLayout.LayoutParams(0, dp(44), 1));
-        root.addView(nav, matchWrap());
+        rightBox.addView(navButton("个人", "ic_profile", selectedTab == 2, view -> showShell(2)), new LinearLayout.LayoutParams(dp(48), dp(48)));
+        nav.addView(rightBox, new LinearLayout.LayoutParams(0, dp(48), 1));
+        navWrapper.addView(nav, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 导航栏随主题颜色，玻璃质感
+        navWrapper.setTag("nav_wrapper");
+        navWrapper.setBackground(glassDrawable());
+
+        FrameLayout.LayoutParams navWrapperParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        navWrapperParams.setMargins(0, dp(2), 0, 0);
+        root.addView(navWrapper, navWrapperParams);
 
         if (animate && oldRoot != null && shellWrapper != null) {
             float startX = slideLeft ? screenW : -screenW;
@@ -584,6 +787,7 @@ public class MainActivity extends Activity {
         page.addView(sectionTitle("流动广场"), matchWrap());
         GridLayout grid = new GridLayout(this);
         grid.setColumnCount(2);
+        galleryGrid = grid;
         page.addView(grid, matchWrap());
         Button more = button("加载更多", "ic_load_more", view -> loadGallery(grid));
         GradientDrawable strokeBg = new GradientDrawable();
@@ -599,16 +803,256 @@ public class MainActivity extends Activity {
         scroll.addView(page);
         content.addView(scroll);
         if (galleryItems.isEmpty()) {
+            syncedUrls.clear();
+            nextAfterId = 0;
             mergeGalleryItems(store.loadImageUrlCache());
-            for (ImageItem item : galleryItems) {
-                queueImageCard(grid, item);
+            for (int i = 0; i < galleryItems.size(); i++) {
+                queueImageCard(grid, galleryItems.get(i), i);
             }
             loadGallery(grid);
         } else {
-            for (ImageItem item : galleryItems) {
-                queueImageCard(grid, item);
+            for (int i = 0; i < galleryItems.size(); i++) {
+                queueImageCard(grid, galleryItems.get(i), i);
             }
         }
+        // 如果处于批量选择模式，重建选择UI
+        if (batchSelectMode) {
+            updateBatchBar();
+            refreshAllCardSelections(grid);
+        }
+    }
+
+    // --- 批量选择模式 ---
+
+    private void enterBatchMode(int firstIndex) {
+        batchSelectMode = true;
+        batchSelectedIndices.clear();
+        batchSelectedIndices.add(firstIndex);
+        updateBatchBar();
+        refreshAllCardSelections(galleryGrid);
+    }
+
+    private void exitBatchMode() {
+        batchSelectMode = false;
+        batchSelectedIndices.clear();
+        if (shellHeader != null) {
+            shellHeader.removeAllViews();
+            shellHeader.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        }
+        if (galleryGrid != null) {
+            refreshAllCardSelections(galleryGrid);
+        }
+    }
+
+    private void toggleBatchSelection(int index) {
+        if (batchSelectedIndices.contains(index)) {
+            batchSelectedIndices.remove(index);
+            if (batchSelectedIndices.isEmpty()) {
+                exitBatchMode();
+                return;
+            }
+        } else {
+            batchSelectedIndices.add(index);
+        }
+        updateBatchBar();
+        refreshAllCardSelections(galleryGrid);
+    }
+
+    private void updateBatchBar() {
+        if (shellHeader == null) return;
+        shellHeader.removeAllViews();
+
+        int count = batchSelectedIndices.size();
+        int total = galleryItems.size();
+
+        // 已选数量
+        TextView countText = new TextView(this);
+        countText.setText(String.valueOf(count));
+        countText.setTextColor(theme.primaryText);
+        countText.setTextSize(17 * theme.fontScale);
+        countText.setTypeface(Typeface.create(theme.fontFamily, Typeface.BOLD));
+        shellHeader.addView(countText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        // 全选/取消全选
+        boolean allSelected = count == total && total > 0;
+        Button selectAllBtn = new Button(this);
+        selectAllBtn.setText(allSelected ? "取消全选" : "全选");
+        selectAllBtn.setTextColor(theme.primaryButton);
+        selectAllBtn.setTextSize(12 * theme.fontScale);
+        selectAllBtn.setAllCaps(false);
+        selectAllBtn.setPadding(dp(8), dp(2), dp(8), dp(2));
+        selectAllBtn.setMinWidth(0);
+        selectAllBtn.setMinHeight(0);
+        selectAllBtn.setBackground(null);
+        selectAllBtn.setOnClickListener(v -> {
+            if (allSelected) {
+                batchSelectedIndices.clear();
+            } else {
+                for (int i = 0; i < galleryItems.size(); i++) {
+                    batchSelectedIndices.add(i);
+                }
+            }
+            updateBatchBar();
+            refreshAllCardSelections(galleryGrid);
+        });
+        shellHeader.addView(selectAllBtn, compactWrap());
+
+        // 操作按钮组
+        int btnSize = dp(36);
+
+        // 下载
+        Button downloadBtn = iconButton("ic_download", v -> batchDownload());
+        shellHeader.addView(downloadBtn, new LinearLayout.LayoutParams(btnSize, btnSize));
+
+        // 分享
+        Button shareBtn = iconButton("ic_share", v -> batchShare());
+        shellHeader.addView(shareBtn, new LinearLayout.LayoutParams(btnSize, btnSize));
+
+        // 打印
+        Button printBtn = iconButton("ic_print", v -> batchPrint());
+        shellHeader.addView(printBtn, new LinearLayout.LayoutParams(btnSize, btnSize));
+
+        // 复制URL
+        Button copyBtn = iconButton("ic_copy_url", v -> batchCopyUrls());
+        shellHeader.addView(copyBtn, new LinearLayout.LayoutParams(btnSize, btnSize));
+
+        // 关闭
+        Button closeBtn = iconButton("ic_close", v -> exitBatchMode());
+        shellHeader.addView(closeBtn, new LinearLayout.LayoutParams(dp(36), dp(36)));
+    }
+
+    private void refreshAllCardSelections(GridLayout grid) {
+        if (grid == null) return;
+        for (int i = 0; i < grid.getChildCount(); i++) {
+            View child = grid.getChildAt(i);
+            if (child instanceof FrameLayout && child.getTag() instanceof Integer) {
+                int realIndex = (Integer) child.getTag();
+                refreshCardSelection((FrameLayout) child, realIndex);
+            }
+        }
+    }
+
+    private void refreshCardSelection(FrameLayout card, int index) {
+        if (card.getChildCount() < 2) return;
+        View overlay = card.getChildAt(1);
+        if (!(overlay instanceof FrameLayout)) return;
+        FrameLayout checkOverlay = (FrameLayout) overlay;
+
+        boolean selected = batchSelectedIndices.contains(index);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(selected ? 130 : 0, 0, 0, 0));
+        bg.setCornerRadius(dp(14));
+        checkOverlay.setBackground(bg);
+        // 移除旧勾号，添加新勾号
+        checkOverlay.removeAllViews();
+        if (selected) {
+            TextView checkMark = new TextView(this);
+            checkMark.setText("✓");
+            checkMark.setTextColor(Color.WHITE);
+            checkMark.setTextSize(20 * theme.fontScale);
+            checkMark.setTypeface(Typeface.DEFAULT_BOLD);
+            checkMark.setGravity(Gravity.CENTER);
+            checkMark.setBackground(roundedDrawable(theme.primaryButton, dp(16)));
+            FrameLayout.LayoutParams checkParams = new FrameLayout.LayoutParams(dp(32), dp(32));
+            checkParams.gravity = Gravity.TOP | Gravity.START;
+            checkParams.setMargins(dp(8), dp(8), 0, 0);
+            checkOverlay.addView(checkMark, checkParams);
+        }
+    }
+
+    private void batchDownload() {
+        List<Integer> indices = new ArrayList<>(batchSelectedIndices);
+        if (indices.isEmpty()) return;
+        int total = indices.size();
+        final int[] finished = {0};
+        final int[] failedCount = {0};
+        showDownloadNotification(0, total, "正在准备下载...");
+        for (int index : indices) {
+            ImageItem item = galleryItems.get(index);
+            imageCache.load(item.url, bitmapCallback(bitmap -> {
+                downloadImage(bitmap, item);
+                finished[0]++;
+                int done = finished[0];
+                showDownloadNotification(done, total,
+                        "已完成 " + done + "/" + total + (failedCount[0] > 0 ? "（失败 " + failedCount[0] + "）" : ""));
+                if (done >= total) {
+                    int failCount = failedCount[0];
+                    mainHandler.postDelayed(() -> finishDownloadNotification(total - failCount, failCount), 1500);
+                }
+            }, msg -> {
+                failedCount[0]++;
+                finished[0]++;
+                int done = finished[0];
+                showDownloadNotification(done, total,
+                        "已完成 " + done + "/" + total + "（失败 " + failedCount[0] + "）");
+                if (done >= total) {
+                    int failCount = failedCount[0];
+                    mainHandler.postDelayed(() -> finishDownloadNotification(total - failCount, failCount), 1500);
+                }
+            }));
+        }
+    }
+
+    private void batchShare() {
+        List<Integer> indices = new ArrayList<>(batchSelectedIndices);
+        if (indices.isEmpty()) return;
+        // 收集并分享所有选中图片
+        List<Uri> uris = new java.util.ArrayList<>();
+        int[] remaining = {indices.size()};
+        toast("正在准备分享 " + indices.size() + " 张图片…");
+        for (int index : indices) {
+            ImageItem item = galleryItems.get(index);
+            imageCache.load(item.url, bitmapCallback(bitmap -> {
+                Uri uri = insertSharedBitmap(bitmap, item);
+                if (uri != null) {
+                    synchronized (uris) {
+                        uris.add(uri);
+                    }
+                }
+                remaining[0]--;
+                if (remaining[0] <= 0) {
+                    mainHandler.post(() -> {
+                        if (uris.isEmpty()) {
+                            toast("分享图片失败");
+                            return;
+                        }
+                        Intent share = new Intent(uris.size() == 1
+                                ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE);
+                        share.setType("image/png");
+                        if (uris.size() == 1) {
+                            share.putExtra(Intent.EXTRA_STREAM, uris.get(0));
+                        } else {
+                            share.putParcelableArrayListExtra(Intent.EXTRA_STREAM,
+                                    new ArrayList<>(uris));
+                        }
+                        share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(Intent.createChooser(share, "分享 " + uris.size() + " 张图片"));
+                    });
+                }
+            }, this::toast));
+        }
+    }
+
+    private void batchPrint() {
+        List<Integer> indices = new ArrayList<>(batchSelectedIndices);
+        if (indices.isEmpty()) return;
+        toast("正在准备打印 " + indices.size() + " 张图片…");
+        for (int index : indices) {
+            ImageItem item = galleryItems.get(index);
+            imageCache.load(item.url, bitmapCallback(bitmap -> printImage(bitmap, item), this::toast));
+        }
+    }
+
+    private void batchCopyUrls() {
+        List<Integer> indices = new ArrayList<>(batchSelectedIndices);
+        if (indices.isEmpty()) return;
+        StringBuilder sb = new StringBuilder();
+        for (int index : indices) {
+            sb.append(galleryItems.get(index).url).append("\n");
+        }
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText("Memories 图片链接", sb.toString().trim()));
+        toast("已复制 " + indices.size() + " 个链接");
     }
 
     private void loadGallery(GridLayout grid) {
@@ -616,12 +1060,25 @@ public class MainActivity extends Activity {
             return;
         }
         galleryLoading = true;
-        api.images(nextAfterId, uiCallback(page -> {
+        final long requestAfterId = nextAfterId;
+        api.images(requestAfterId, uiCallback(page -> {
             nextAfterId = page.nextAfterId == null ? nextAfterId : page.nextAfterId;
+            // 记录服务端确认的 URL
+            for (ImageItem item : page.items) {
+                syncedUrls.add(item.url);
+            }
             List<ImageItem> added = mergeGalleryItems(page.items);
+            // 当全部页面加载完毕时，清理本地缓存中已被服务端删除的条目
+            if (page.nextAfterId == null && !syncedUrls.isEmpty()) {
+                int before = galleryItems.size();
+                galleryItems.removeIf(item -> !syncedUrls.contains(item.url));
+                if (galleryItems.size() < before) {
+                    toast("已同步清理 " + (before - galleryItems.size()) + " 条失效记录");
+                }
+            }
             store.saveImageUrlCache(galleryItems);
             for (ImageItem item : added) {
-                queueImageCard(grid, item);
+                queueImageCard(grid, item, galleryItems.indexOf(item));
             }
             galleryLoading = false;
         }, message -> {
@@ -668,21 +1125,80 @@ public class MainActivity extends Activity {
         return candidate.id < current.id;
     }
 
-    private void queueImageCard(GridLayout grid, ImageItem item) {
-        galleryQueue.add(() -> imageCache.load(item.url, bitmapCallback(bitmap -> addImageCard(grid, item, bitmap), this::toast)));
+    private void queueImageCard(GridLayout grid, ImageItem item, int index) {
+        galleryQueue.add(() -> imageCache.load(item.url, bitmapCallback(bitmap -> addImageCard(grid, item, index, bitmap), this::toast)));
     }
 
-    private void addImageCard(GridLayout grid, ImageItem item, Bitmap bitmap) {
+    private void addImageCard(GridLayout grid, ImageItem item, int index, Bitmap bitmap) {
+        // 外层容器，裁剪为圆角以匹配图片形状
+        FrameLayout card = new FrameLayout(this);
+        int cardSize = (getResources().getDisplayMetrics().widthPixels - dp(44)) / 2;
+        card.setLayoutParams(new FrameLayout.LayoutParams(cardSize, cardSize));
+        card.setTag(index);
+        if (Build.VERSION.SDK_INT >= 21) {
+            card.setClipToOutline(true);
+            card.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(14));
+                }
+            });
+        }
+
         ImageView image = new ImageView(this);
         image.setImageBitmap(squareRoundedBitmap(bitmap, dp(14)));
         image.setScaleType(ImageView.ScaleType.FIT_XY);
+        card.addView(image, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        // 选择标记层 - 与图片框完全一致的圆角遮罩
+        FrameLayout checkOverlay = new FrameLayout(this);
+        GradientDrawable overlayBg = new GradientDrawable();
+        overlayBg.setColor(Color.argb(batchSelectedIndices.contains(index) ? 130 : 0, 0, 0, 0));
+        overlayBg.setCornerRadius(dp(14));
+        checkOverlay.setBackground(overlayBg);
+        checkOverlay.setClickable(false);
+
+        // 选中勾号
+        if (batchSelectedIndices.contains(index)) {
+            TextView checkMark = new TextView(this);
+            checkMark.setText("✓");
+            checkMark.setTextColor(Color.WHITE);
+            checkMark.setTextSize(20 * theme.fontScale);
+            checkMark.setTypeface(Typeface.DEFAULT_BOLD);
+            checkMark.setGravity(Gravity.CENTER);
+            checkMark.setBackground(roundedDrawable(theme.primaryButton, dp(16)));
+            FrameLayout.LayoutParams checkParams = new FrameLayout.LayoutParams(dp(32), dp(32));
+            checkParams.gravity = Gravity.TOP | Gravity.START;
+            checkParams.setMargins(dp(8), dp(8), 0, 0);
+            checkOverlay.addView(checkMark, checkParams);
+        }
+        card.addView(checkOverlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        // 点击/长按事件 - 从 tag 读取真实索引
+        card.setOnClickListener(view -> {
+            int idx = (Integer) view.getTag();
+            if (batchSelectMode) {
+                toggleBatchSelection(idx);
+            } else {
+                showImageDialogAt(idx);
+            }
+        });
+        card.setOnLongClickListener(view -> {
+            if (!batchSelectMode) {
+                int idx = (Integer) view.getTag();
+                enterBatchMode(idx);
+            }
+            return true;
+        });
         addPressEffect(image);
-        image.setOnClickListener(view -> showImageDialogAt(Math.max(0, galleryItems.indexOf(item))));
+
         GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-        params.width = (getResources().getDisplayMetrics().widthPixels - dp(44)) / 2;
-        params.height = params.width;
+        params.width = cardSize;
+        params.height = cardSize;
         params.setMargins(dp(4), dp(4), dp(4), dp(4));
-        grid.addView(image, params);
+        grid.addView(card, params);
     }
 
     private void showImageDialogAt(int index) {
@@ -763,6 +1279,74 @@ public class MainActivity extends Activity {
         bottomBar.addView(iconButton("ic_menu", view -> showPreviewMenu(index, bitmap, item, curImage)), new LinearLayout.LayoutParams(dp(48), dp(48)));
         page.addView(bottomBar, matchWrap());
         previewOverlay.addView(page);
+
+        // 非图片区域左右滑动切换图片（顶部栏、底部栏、左右边缘）
+        // 逻辑：只有触摸点不在 imageBox（图片容器）上时，才触发左右滑动切换图片
+        if (galleryItems.size() > 1) {
+            final float[] swipeDownX = new float[1];
+            final boolean[] swipeTrack = new boolean[1];
+            previewOverlay.setOnTouchListener((v, event) -> {
+                if (event.getPointerCount() > 1) return false;
+                int action = event.getAction();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    // 判断触摸点是否在图片区域（imageBox）内
+                    int[] imgLoc = new int[2];
+                    imageBox.getLocationOnScreen(imgLoc);
+                    float rx = event.getRawX();
+                    float ry = event.getRawY();
+                    boolean onImageArea = rx >= imgLoc[0] && rx <= imgLoc[0] + imageBox.getWidth()
+                                       && ry >= imgLoc[1] && ry <= imgLoc[1] + imageBox.getHeight();
+                    if (onImageArea) {
+                        // 在图片上，让 imageBox 处理缩放/拖动
+                        swipeTrack[0] = false;
+                        return false;
+                    }
+                    // 不在图片上（顶部栏/底部栏/边缘），开始滑动检测
+                    swipeDownX[0] = event.getX();
+                    swipeTrack[0] = true;
+                    return false;
+                } else if (action == MotionEvent.ACTION_MOVE && swipeTrack[0]) {
+                    float dx = event.getX() - swipeDownX[0];
+                    if (Math.abs(dx) > dp(30)) {
+                        swipeTrack[0] = false;
+                        int dir = dx > 0 ? -1 : 1;
+                        int targetIndex = (previewIndex + dir + galleryItems.size()) % galleryItems.size();
+                        float slideAnim = dx > 0 ? screenW : -screenW;
+                        // 滑动动画
+                        for (int i = 0; i < imageBox.getChildCount(); i++) {
+                            View child = imageBox.getChildAt(i);
+                            String tag = (String) child.getTag();
+                            if (tag == null) continue;
+                            float endTx;
+                            if ("cur".equals(tag)) {
+                                endTx = dx > 0 ? screenW : -screenW;
+                            } else if (tag.startsWith("prev:")) {
+                                endTx = -screenW + (dx > 0 ? screenW : -screenW);
+                            } else if (tag.startsWith("next:")) {
+                                endTx = screenW + (dx > 0 ? screenW : -screenW);
+                            } else continue;
+                            child.animate().translationX(endTx).setDuration(200).start();
+                        }
+                        mainHandler.postDelayed(() -> {
+                            previewScale = 1f;
+                            previewRotation = 0f;
+                            previewFlippedHorizontal = false;
+                            previewFlippedVertical = false;
+                            previewTranslateX = 0;
+                            previewTranslateY = 0;
+                            previewMenuDim = null;
+                            showImageDialogAt(targetIndex);
+                        }, 220);
+                        return true;
+                    }
+                    return false;
+                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    swipeTrack[0] = false;
+                    return false;
+                }
+                return false;
+            });
+        }
         if (previewOverlay.getParent() == null) {
             ((ViewGroup) getWindow().getDecorView()).addView(previewOverlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
@@ -911,11 +1495,8 @@ public class MainActivity extends Activity {
                     float dx = event.getX() - downX[0];
                     float dy = event.getY() - downY[0];
                     if (!isSwiping[0] && !isPanning[0] && Math.abs(dx) + Math.abs(dy) > dp(10)) {
-                        if (previewScale > 1.01f) {
-                            isPanning[0] = true;
-                        } else if (Math.abs(dx) > Math.abs(dy) * 1.3f) {
-                            isSwiping[0] = true;
-                        }
+                        // 缩放时始终允许单指拖动平移
+                        isPanning[0] = true;
                     }
                     if (isPanning[0]) {
                         previewTranslateX = panStartX[0] + dx;
@@ -927,41 +1508,11 @@ public class MainActivity extends Activity {
                                 break;
                             }
                         }
-                    } else if (isSwiping[0] && galleryItems.size() > 1) {
-                        applySwipeOffset(imageBox, dx, screenW);
                     }
                     break;
                 }
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    if (isSwiping[0] && galleryItems.size() > 1) {
-                        float finalDx = 0;
-                        for (int i = 0; i < imageBox.getChildCount(); i++) {
-                            View child = imageBox.getChildAt(i);
-                            if ("cur".equals(child.getTag())) {
-                                finalDx = child.getTranslationX();
-                                break;
-                            }
-                        }
-                        if (Math.abs(finalDx) > screenW * 0.25f) {
-                            int targetIndex = finalDx > 0
-                                    ? (index - 1 + galleryItems.size()) % galleryItems.size()
-                                    : (index + 1) % galleryItems.size();
-                            float targetOffset = finalDx > 0 ? screenW : -screenW;
-                            animateSwipeCommit(imageBox, targetOffset, screenW, () -> {
-                                previewScale = 1f;
-                                previewRotation = 0f;
-                                previewFlippedHorizontal = false;
-                                previewFlippedVertical = false;
-                                previewTranslateX = 0;
-                                previewTranslateY = 0;
-                                previewMenuDim = null;
-                                showImageDialogAt(targetIndex);
-                            });
-                        } else {
-                            animateSwipeCommit(imageBox, 0, screenW, null);
-                        }
-                    }
                     isSwiping[0] = false;
                     isPanning[0] = false;
                     break;
@@ -1085,13 +1636,36 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout page = vertical();
         page.setPadding(dp(16), dp(4), dp(16), dp(16));
-        page.addView(heroPanel("上传队列", "存储位置固定 Telegram，CDN 自动选择；通知栏会同步显示当前上传进度。", "ic_upload"), matchWrap());
-        Button pickBtn = button("选择图片", "ic_upload", view -> pickImages());
-        pickBtn.setGravity(Gravity.CENTER);
-        LinearLayout pickRow = horizontal();
-        pickRow.setGravity(Gravity.CENTER);
-        pickRow.addView(pickBtn, new LinearLayout.LayoutParams(dp(180), dp(44)));
-        page.addView(pickRow, matchWrap());
+        // 大号上传按钮（替代原来的 heroPanel + 小按钮）
+        LinearLayout uploadHero = new LinearLayout(this);
+        uploadHero.setOrientation(LinearLayout.VERTICAL);
+        uploadHero.setGravity(Gravity.CENTER);
+        uploadHero.setPadding(dp(24), dp(28), dp(24), dp(24));
+        uploadHero.setBackground(gradientDrawable(theme.primaryButton, blend(theme.primaryButton, theme.background, 0.55f), dp(22)));
+        ImageView uploadIcon = new ImageView(this);
+        uploadIcon.setImageResource(getResources().getIdentifier("ic_upload", "drawable", getPackageName()));
+        uploadIcon.setColorFilter(theme.background, android.graphics.PorterDuff.Mode.SRC_IN);
+        uploadHero.addView(uploadIcon, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView uploadLabel = new TextView(this);
+        uploadLabel.setText("选择图片上传");
+        uploadLabel.setTextColor(theme.background);
+        uploadLabel.setTextSize(18 * theme.fontScale);
+        uploadLabel.setTypeface(Typeface.create(theme.fontFamily, Typeface.BOLD));
+        uploadLabel.setGravity(Gravity.CENTER);
+        uploadLabel.setPadding(0, dp(10), 0, 0);
+        uploadHero.addView(uploadLabel, matchWrap());
+        TextView uploadHint = new TextView(this);
+        uploadHint.setText("支持多选 · Telegram 存储 · 通知栏同步进度");
+        uploadHint.setTextColor(blend(theme.background, theme.primaryButton, 0.3f));
+        uploadHint.setTextSize(12 * theme.fontScale);
+        uploadHint.setGravity(Gravity.CENTER);
+        uploadHint.setPadding(0, dp(4), 0, 0);
+        uploadHero.addView(uploadHint, matchWrap());
+        uploadHero.setOnClickListener(v -> pickImages());
+        addPressEffect(uploadHero);
+        LinearLayout.LayoutParams heroParams = matchWrap();
+        heroParams.setMargins(0, dp(6), 0, dp(14));
+        page.addView(uploadHero, heroParams);
         LinearLayout queueView = vertical();
         page.addView(queueView, matchWrap());
         renderUploadQueue(queueView);
@@ -1120,6 +1694,7 @@ public class MainActivity extends Activity {
 
     private void enqueueUpload(UploadTask task) {
         uploadTasks.add(task);
+        saveUploadTasks();
         updateUploadNotification(task, "等待上传", 0, false);
         uploadQueue.add(() -> runUpload(task));
     }
@@ -1190,6 +1765,7 @@ public class MainActivity extends Activity {
                 store.appendUploadRecord(item.url);
                 galleryItems.add(0, item);
                 store.saveImageUrlCache(galleryItems);
+                saveUploadTasks();
                 showUpload();
             }, message -> {
                 writeAnim.cancel();
@@ -1207,43 +1783,362 @@ public class MainActivity extends Activity {
         task.status = UploadTask.FAILED;
         task.message = message;
         updateUploadNotification(task, "上传失败：" + message, task.progress, true);
+        saveUploadTasks();
         showUpload();
     }
 
     private void renderUploadQueue(LinearLayout queueView) {
         queueView.removeAllViews();
         if (uploadTasks.isEmpty()) {
-            TextView empty = text("暂无上传任务", 14, false);
-            empty.setGravity(Gravity.CENTER);
-            queueView.addView(empty, matchWrap());
+            LinearLayout emptyBox = new LinearLayout(this);
+            emptyBox.setOrientation(LinearLayout.VERTICAL);
+            emptyBox.setGravity(Gravity.CENTER);
+            emptyBox.setPadding(dp(24), dp(36), dp(24), dp(36));
+            ImageView emptyIcon = new ImageView(this);
+            emptyIcon.setImageResource(getResources().getIdentifier("ic_upload", "drawable", getPackageName()));
+            emptyIcon.setAlpha(0.35f);
+            emptyBox.addView(emptyIcon, new LinearLayout.LayoutParams(dp(56), dp(56)));
+            TextView emptyText = text("暂无上传任务", 14, false);
+            emptyText.setGravity(Gravity.CENTER);
+            emptyText.setAlpha(0.5f);
+            emptyBox.addView(emptyText, matchWrap());
+            TextView hintText = text("点击上方按钮选择图片开始上传", 12, false);
+            hintText.setGravity(Gravity.CENTER);
+            hintText.setAlpha(0.35f);
+            emptyBox.addView(hintText, matchWrap());
+            queueView.addView(emptyBox, matchWrap());
             return;
         }
-        for (UploadTask task : uploadTasks) {
-            LinearLayout row = vertical();
-            row.setPadding(dp(14), dp(12), dp(14), dp(12));
-            row.setBackground(glassDrawable());
-            row.addView(text(task.uri.getLastPathSegment(), 14, true), matchWrap());
-            LinearLayout status = horizontal();
-            status.setGravity(Gravity.CENTER_VERTICAL);
-            status.addView(text(task.message, 12, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            double value = task.progress;
-        String pct = value == (int)value ? String.valueOf((int)value) + "%" : String.format("%.1f%%", value);
-        status.addView(statusPill(pct, progressColor(task)), new LinearLayout.LayoutParams(dp(68), dp(32)));
-            row.addView(status, matchWrap());
-            ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-            bar.setMax(100);
-            bar.setProgress((int) task.progress);
-            bar.setProgressDrawable(progressBarDrawable(progressColor(task)));
-            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10));
-            barParams.setMargins(0, dp(4), 0, 0);
-            row.addView(bar, barParams);
-            if (task.status == UploadTask.FAILED) {
-                row.addView(button("重试", "ic_upload", view -> retryUpload(task)), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)));
-            }
-            LinearLayout.LayoutParams params = matchWrap();
-            params.setMargins(0, dp(8), 0, dp(8));
-            queueView.addView(row, params);
+
+        // 统计
+        int waiting = 0, uploading = 0, done = 0, failed = 0;
+        for (UploadTask t : uploadTasks) {
+            if (t.status == UploadTask.WAITING) waiting++;
+            else if (t.status == UploadTask.UPLOADING) uploading++;
+            else if (t.status == UploadTask.DONE) done++;
+            else if (t.status == UploadTask.FAILED) failed++;
         }
+
+        // 汇总栏
+        LinearLayout summaryRow = new LinearLayout(this);
+        summaryRow.setOrientation(LinearLayout.HORIZONTAL);
+        summaryRow.setGravity(Gravity.CENTER_VERTICAL);
+        summaryRow.setPadding(dp(16), dp(12), dp(14), dp(12));
+        summaryRow.setBackground(gradientDrawable(theme.primaryButton, blend(theme.primaryButton, theme.background, 0.58f), dp(18)));
+
+        LinearLayout summaryLeft = new LinearLayout(this);
+        summaryLeft.setOrientation(LinearLayout.VERTICAL);
+        TextView summaryTitle = text("上传队列", 16, true);
+        summaryTitle.setTextColor(theme.background);
+        summaryLeft.addView(summaryTitle, matchWrap());
+        TextView summarySub = text("共 " + uploadTasks.size() + " 个任务", 11, false);
+        summarySub.setTextColor(blend(theme.background, theme.primaryButton, 0.25f));
+        summaryLeft.addView(summarySub, matchWrap());
+        summaryRow.addView(summaryLeft, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        LinearLayout badgesRow = new LinearLayout(this);
+        badgesRow.setOrientation(LinearLayout.HORIZONTAL);
+        badgesRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        if (uploading > 0) badgesRow.addView(summaryBadge("上传中 " + uploading, Color.rgb(219, 160, 55)), compactWrap());
+        if (waiting > 0) badgesRow.addView(summaryBadge("等待 " + waiting, blend(theme.background, theme.primaryButton, 0.35f)), compactWrap());
+        if (done > 0) badgesRow.addView(summaryBadge("完成 " + done, Color.rgb(42, 138, 92)), compactWrap());
+        if (failed > 0) badgesRow.addView(summaryBadge("失败 " + failed, Color.rgb(205, 93, 61)), compactWrap());
+        summaryRow.addView(badgesRow, compactWrap());
+
+        LinearLayout.LayoutParams summaryParams = matchWrap();
+        summaryParams.setMargins(0, dp(4), 0, dp(10));
+        queueView.addView(summaryRow, summaryParams);
+
+        // 批量操作栏
+        if (failed > 0 || done > 0) {
+            LinearLayout batchRow = new LinearLayout(this);
+            batchRow.setOrientation(LinearLayout.HORIZONTAL);
+            batchRow.setGravity(Gravity.CENTER);
+            batchRow.setPadding(0, 0, 0, dp(4));
+            if (failed > 0) {
+                Button retryAll = compactButton("全部重试", "ic_upload", v -> {
+                    for (UploadTask t : uploadTasks) {
+                        if (t.status == UploadTask.FAILED) {
+                            retryUpload(t);
+                        }
+                    }
+                });
+                retryAll.setGravity(Gravity.CENTER);
+                batchRow.addView(retryAll, new LinearLayout.LayoutParams(dp(120), dp(34)));
+            }
+            if (done > 0) {
+                Button clearDone = compactButton("清除已完成", "ic_clear", v -> {
+                    uploadTasks.removeIf(t -> t.status == UploadTask.DONE);
+                    saveUploadTasks();
+                    showUpload();
+                });
+                clearDone.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams clearLp = new LinearLayout.LayoutParams(dp(120), dp(34));
+                if (failed > 0) clearLp.setMargins(dp(8), 0, 0, 0);
+                batchRow.addView(clearDone, clearLp);
+            }
+            queueView.addView(batchRow, matchWrap());
+        }
+
+        // 任务卡片列表
+        for (int i = 0; i < uploadTasks.size(); i++) {
+            UploadTask task = uploadTasks.get(i);
+            String fileName = resolveFileName(task.uri);
+
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(dp(14), dp(12), dp(14), dp(12));
+            card.setBackground(glassDrawable());
+
+            // 顶部行：缩略图 + 文件信息 + 进度
+            LinearLayout topRow = new LinearLayout(this);
+            topRow.setOrientation(LinearLayout.HORIZONTAL);
+            topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+            // 缩略图
+            ImageView thumbnail = new ImageView(this);
+            thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            int thumbSize = dp(56);
+            LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(thumbSize, thumbSize);
+            thumbParams.setMargins(0, 0, dp(14), 0);
+            topRow.addView(thumbnail, thumbParams);
+
+            boolean thumbLoaded = false;
+            try {
+                android.graphics.Bitmap thumbBmp = MediaStore.Images.Media.getBitmap(getContentResolver(), task.uri);
+                if (thumbBmp != null) {
+                    thumbnail.setImageBitmap(roundedBitmap(
+                            Bitmap.createScaledBitmap(thumbBmp, thumbSize, thumbSize, true), dp(12)));
+                    thumbLoaded = true;
+                }
+            } catch (Exception ignored) {
+            }
+            if (!thumbLoaded) {
+                // 缩略图加载失败，根据状态显示不同占位图标
+                int iconRes = task.status == UploadTask.DONE
+                        ? getResources().getIdentifier("ic_gallery", "drawable", getPackageName())
+                        : getResources().getIdentifier("ic_upload", "drawable", getPackageName());
+                thumbnail.setImageResource(iconRes);
+                thumbnail.setPadding(dp(12), dp(12), dp(12), dp(12));
+                thumbnail.setBackground(roundedDrawable(
+                        task.status == UploadTask.FAILED
+                                ? blend(Color.rgb(205, 93, 61), theme.background, 0.6f)
+                                : theme.secondaryButton,
+                        dp(12)));
+                thumbnail.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            }
+
+            // 文件信息列
+            LinearLayout infoCol = new LinearLayout(this);
+            infoCol.setOrientation(LinearLayout.VERTICAL);
+            infoCol.setGravity(Gravity.CENTER_VERTICAL);
+
+            // 文件名
+            TextView nameText = text(fileName, 14, true);
+            nameText.setMaxLines(1);
+            infoCol.addView(nameText, matchWrap());
+
+            // 状态行：圆点 + 状态文字
+            LinearLayout statusRow = new LinearLayout(this);
+            statusRow.setOrientation(LinearLayout.HORIZONTAL);
+            statusRow.setGravity(Gravity.CENTER_VERTICAL);
+            statusRow.setPadding(0, dp(2), 0, 0);
+
+            View dot = new View(this);
+            int dotSize = dp(8);
+            LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dotSize, dotSize);
+            dotParams.setMargins(0, 0, dp(6), 0);
+            dotParams.gravity = Gravity.CENTER_VERTICAL;
+            dot.setBackground(roundedDrawable(statusDotColor(task), dotSize / 2));
+            statusRow.addView(dot, dotParams);
+
+            TextView statusText = text(statusLabel(task), 12, false);
+            statusText.setTextColor(statusTextColor(task));
+            statusRow.addView(statusText, compactWrap());
+            infoCol.addView(statusRow, matchWrap());
+
+            // 额外信息行 - 完成时URL可点击复制
+            if (task.status == UploadTask.DONE && !task.url.isEmpty()) {
+                TextView urlText = text(truncateUrl(task.url), 11, false);
+                urlText.setTextColor(blend(theme.primaryButton, theme.secondaryText, 0.6f));
+                urlText.setMaxLines(1);
+                urlText.setOnClickListener(v -> {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText("图片链接", task.url));
+                    toast("已复制图片链接");
+                });
+                addPressEffect(urlText);
+                infoCol.addView(urlText, matchWrap());
+            }
+            if (task.status == UploadTask.FAILED) {
+                TextView errText = text(task.message, 11, false);
+                errText.setTextColor(Color.rgb(205, 93, 61));
+                errText.setMaxLines(1);
+                infoCol.addView(errText, matchWrap());
+            }
+
+            topRow.addView(infoCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+            // 进度百分比（右上角）
+            if (task.status == UploadTask.UPLOADING || task.status == UploadTask.WAITING) {
+                String pct = task.progress == (int) task.progress
+                        ? String.valueOf((int) task.progress) + "%"
+                        : String.format("%.0f%%", task.progress);
+                TextView pctText = new TextView(this);
+                pctText.setText(pct);
+                pctText.setTextColor(progressColor(task));
+                pctText.setTextSize(18 * theme.fontScale);
+                pctText.setTypeface(Typeface.create(theme.fontFamily, Typeface.BOLD));
+                pctText.setGravity(Gravity.CENTER);
+                pctText.setPadding(dp(4), 0, 0, 0);
+                topRow.addView(pctText, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+            } else if (task.status == UploadTask.DONE) {
+                TextView doneMark = new TextView(this);
+                doneMark.setText("✓");
+                doneMark.setTextColor(Color.rgb(42, 138, 92));
+                doneMark.setTextSize(22 * theme.fontScale);
+                doneMark.setTypeface(Typeface.create(theme.fontFamily, Typeface.BOLD));
+                doneMark.setGravity(Gravity.CENTER);
+                topRow.addView(doneMark, new LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.WRAP_CONTENT));
+            } else {
+                TextView failMark = new TextView(this);
+                failMark.setText("✗");
+                failMark.setTextColor(Color.rgb(205, 93, 61));
+                failMark.setTextSize(22 * theme.fontScale);
+                failMark.setTypeface(Typeface.create(theme.fontFamily, Typeface.BOLD));
+                failMark.setGravity(Gravity.CENTER);
+                topRow.addView(failMark, new LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+
+            card.addView(topRow, matchWrap());
+
+            // 进度条（仅上传中显示）
+            if (task.status == UploadTask.UPLOADING) {
+                ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                bar.setMax(100);
+                bar.setProgress((int) task.progress);
+                bar.setProgressDrawable(progressBarDrawable(progressColor(task)));
+                LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(6));
+                barParams.setMargins(0, dp(10), 0, dp(2));
+                card.addView(bar, barParams);
+            }
+
+            // 操作按钮（仅失败时显示）
+            if (task.status == UploadTask.FAILED) {
+                LinearLayout actionRow = new LinearLayout(this);
+                actionRow.setOrientation(LinearLayout.HORIZONTAL);
+                actionRow.setGravity(Gravity.CENTER);
+                actionRow.setPadding(0, dp(8), 0, 0);
+                Button retryBtn = compactButton("重新上传", "ic_upload", v -> retryUpload(task));
+                retryBtn.setGravity(Gravity.CENTER);
+                actionRow.addView(retryBtn, new LinearLayout.LayoutParams(0, dp(36), 1));
+                View spacer = new View(this);
+                actionRow.addView(spacer, new LinearLayout.LayoutParams(dp(8), 0));
+                Button removeBtn = compactButton("移除", "ic_clear", v -> {
+                    uploadTasks.remove(task);
+                    saveUploadTasks();
+                    showUpload();
+                });
+                removeBtn.setGravity(Gravity.CENTER);
+                actionRow.addView(removeBtn, new LinearLayout.LayoutParams(0, dp(36), 1));
+                card.addView(actionRow, matchWrap());
+            }
+
+            LinearLayout.LayoutParams cardParams = matchWrap();
+            cardParams.setMargins(0, dp(3), 0, dp(3));
+            queueView.addView(card, cardParams);
+        }
+    }
+
+    private String resolveFileName(Uri uri) {
+        String name = null;
+        try {
+            // 尝试通过 ContentResolver 查询文件名
+            String[] projection = {android.provider.OpenableColumns.DISPLAY_NAME};
+            android.database.Cursor cursor = getContentResolver().query(uri, projection, null, null, null);
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                        if (nameIndex >= 0) {
+                            name = cursor.getString(nameIndex);
+                        }
+                    }
+                } finally {
+                    cursor.close();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        if (name == null || name.isEmpty()) {
+            // 从 URI 路径中提取文件名
+            String path = uri.getLastPathSegment();
+            if (path != null && !path.isEmpty()) {
+                name = path;
+            } else {
+                name = uri.toString();
+            }
+        }
+        // 截断过长的文件名
+        if (name.length() > 40) {
+            name = name.substring(0, 18) + "…" + name.substring(name.length() - 18);
+        }
+        return name;
+    }
+
+    private int statusTextColor(UploadTask task) {
+        switch (task.status) {
+            case UploadTask.UPLOADING: return theme.primaryButton;
+            case UploadTask.DONE: return Color.rgb(42, 138, 92);
+            case UploadTask.FAILED: return Color.rgb(205, 93, 61);
+            default: return theme.secondaryText;
+        }
+    }
+
+    private TextView summaryBadge(String text, int color) {
+        TextView badge = new TextView(this);
+        badge.setText(text);
+        badge.setTextColor(theme.background);
+        badge.setTextSize(11);
+        badge.setTypeface(Typeface.create(theme.fontFamily, Typeface.BOLD));
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding(dp(8), dp(2), dp(8), dp(2));
+        badge.setBackground(roundedDrawable(blend(color, theme.background, 0.3f), dp(999)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(4), 0, 0, 0);
+        badge.setLayoutParams(lp);
+        return badge;
+    }
+
+    private String statusLabel(UploadTask task) {
+        switch (task.status) {
+            case UploadTask.WAITING: return "等待上传";
+            case UploadTask.UPLOADING: return task.message;
+            case UploadTask.DONE: return "上传完成";
+            case UploadTask.FAILED: return "上传失败";
+            default: return task.message;
+        }
+    }
+
+    private int statusDotColor(UploadTask task) {
+        switch (task.status) {
+            case UploadTask.WAITING: return blend(theme.secondaryText, theme.background, 0.4f);
+            case UploadTask.UPLOADING: return theme.primaryButton;
+            case UploadTask.DONE: return Color.rgb(42, 138, 92);
+            case UploadTask.FAILED: return Color.rgb(205, 93, 61);
+            default: return theme.secondaryText;
+        }
+    }
+
+    private String truncateUrl(String url) {
+        if (url.length() <= 42) return url;
+        return url.substring(0, 20) + "…" + url.substring(url.length() - 20);
+    }
+
+    private void saveUploadTasks() {
+        store.saveUploadTasks(uploadTasks);
     }
 
     private void retryUpload(UploadTask task) {
@@ -1252,6 +2147,7 @@ public class MainActivity extends Activity {
         task.message = "等待重试";
         task.url = null;
         updateUploadNotification(task, task.message, task.progress, false);
+        saveUploadTasks();
         uploadQueue.add(() -> runUpload(task));
         showUpload();
     }
@@ -1291,6 +2187,9 @@ public class MainActivity extends Activity {
 
     private void logout() {
         store.clearSession();
+        // 重置为默认主题
+        theme = ThemeConfig.load(store.prefs(), "");
+        theme.save(store.prefs(), "");
         session = new UserSession();
         showLogin();
     }
@@ -1332,8 +2231,21 @@ public class MainActivity extends Activity {
 
     private void showProfilePolicyPage() {
         LinearLayout page = profilePage("协议与隐私");
-        page.addView(profileTile("隐私协议", "本地保存登录、缓存与上传记录", "ic_link", view -> showPolicy("隐私协议", "Memories 客户端会在本机保存登录令牌、QQ号、用户名、图片URL缓存、上传记录、主题偏好和下载目录授权，用于维持登录状态、加速广场浏览、恢复上传进度以及保存下载图片。\n\n应用会按你的操作访问 Memories API、校园墙 OAuth 服务和图床查询接口。除完成登录、图片上传、图片查询和健康检查外，客户端不会主动收集通讯录、短信、精确位置或与功能无关的文件。\n\n清除存储管理中的项目会移除对应本地数据；退出登录会删除本地会话。下载目录授权可通过重新选择目录覆盖。")), matchWrap());
-        page.addView(profileTile("服务条款", "上传前请确认图片权限", "ic_link", view -> showPolicy("服务条款", "使用本应用上传图片前，请确认你拥有图片的上传、公开展示和分享权限，不上传侵犯他人权益、含敏感隐私或违反学校/平台规则的内容。\n\n图片上传会调用配置中的图床与 Memories API；网络服务可用性、响应速度和外部存储策略可能受服务端、网络环境和 Android 系统版本影响。\n\n你可以在存储管理中清除缓存、上传记录或重新选择下载目录。继续使用本应用即表示你理解这些本地和网络行为。")), matchWrap());
+        page.addView(profileTile("隐私协议", "数据收集、存储与使用说明", "ic_privacy", view -> showPolicyDialog("隐私协议",
+                "Memories 客户端会在本机保存登录令牌、QQ号、用户名、图片URL缓存、上传记录、主题偏好和下载目录授权，用于维持登录状态、加速广场浏览、恢复上传进度以及保存下载图片。\n\n应用会按你的操作访问 Memories API、校园墙 OAuth 服务和图床查询接口。除完成登录、图片上传、图片查询和健康检查外，客户端不会主动收集通讯录、短信、精确位置或与功能无关的文件。\n\n清除存储管理中的项目会移除对应本地数据；退出登录会删除本地会话。下载目录授权可通过重新选择目录覆盖。")), matchWrap());
+        page.addView(profileTile("服务条款", "使用规范与免责声明", "ic_terms", view -> showPolicyDialog("服务条款",
+                "使用本应用上传图片前，请确认你拥有图片的上传、公开展示和分享权限，不上传侵犯他人权益、含敏感隐私或违反学校/平台规则的内容。\n\n图片上传会调用配置中的图床与 Memories API；网络服务可用性、响应速度和外部存储策略可能受服务端、网络环境和 Android 系统版本影响。\n\n你可以在存储管理中清除缓存、上传记录或重新选择下载目录。继续使用本应用即表示你理解这些本地和网络行为。")), matchWrap());
+        page.addView(profileTile("开源许可", "github.com/idoknow/Memories-Client · GPL-3.0", "ic_github", view -> {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/idoknow/Memories-Client")));
+        }), matchWrap());
+        page.addView(profileTile("数据安全", "信息加密与传输保护", "ic_security", view -> showPolicyDialog("数据安全",
+                "• 登录认证采用 OAuth 2.0 + PKCE 流程，令牌仅存储于设备本地\n• 所有 API 通信使用 HTTPS 加密传输\n• 本地存储数据仅限本应用访问，不与其他应用共享\n• 上传的图片经图床服务中转，最终存储于 Telegram\n• 用户可随时在存储管理中清除所有本地数据")), matchWrap());
+        page.addView(profileTile("联系方式", "点击发送邮件反馈问题", "ic_contact", view -> {
+            Intent emailIntent = new Intent(Intent.ACTION_SENDTO);
+            emailIntent.setData(Uri.parse("mailto:mail@mrcwoods.com"));
+            emailIntent.putExtra(Intent.EXTRA_SUBJECT, "Memories 客户端反馈");
+            startActivity(Intent.createChooser(emailIntent, "发送邮件"));
+        }), matchWrap());
     }
 
     private void showProfileAboutPage() {
@@ -1374,6 +2286,11 @@ public class MainActivity extends Activity {
         // 立即更新根布局背景和标题字体，确保主题切换马上生效
         if (root != null) {
             applyBackground(root);
+            // 同步更新导航栏背景
+            View navView = root.findViewWithTag("nav_wrapper");
+            if (navView != null) {
+                navView.setBackground(glassDrawable());
+            }
         }
         if (title != null) {
             title.setTypeface(Typeface.create(theme.fontFamily, Typeface.BOLD));
@@ -1529,6 +2446,8 @@ public class MainActivity extends Activity {
 
     private void downloadImage(Bitmap bitmap, ImageItem item) {
         if (store.downloadFolderUri().isEmpty()) {
+            if (waitingForDownloadFolder) return; // 已在选择目录，不再重复弹出
+            waitingForDownloadFolder = true;
             pendingDownloadBitmap = bitmap;
             pendingDownloadItem = item;
             chooseDownloadFolder();
@@ -1749,7 +2668,7 @@ public class MainActivity extends Activity {
     private void themeControls(LinearLayout page) {
         page.addView(button(theme.darkMode ? "切换亮色主题" : "切换暗色主题", "ic_theme_switch", view -> {
             applyGradientPreset(theme.presetName, !theme.darkMode);
-            theme.save(store.prefs());
+            theme.save(store.prefs(), session.qq);
             refreshProfileThemePage();
         }), matchWrap());
         page.addView(sectionTitle("渐变"), matchWrap());
@@ -1759,7 +2678,10 @@ public class MainActivity extends Activity {
         gradientPreset(page, "青蓝玻璃", Color.rgb(36, 116, 148), Color.rgb(214, 239, 244), Color.rgb(245, 250, 250), Color.rgb(22, 38, 45), Color.rgb(78, 102, 112), Color.rgb(78, 185, 220), Color.rgb(35, 65, 78), Color.rgb(10, 25, 32), Color.rgb(226, 244, 249), Color.rgb(151, 187, 198));
         gradientPreset(page, "夜航霓光", Color.rgb(83, 196, 158), Color.rgb(33, 48, 43), Color.rgb(14, 18, 17), Color.rgb(238, 244, 240), Color.rgb(169, 181, 174), Color.rgb(109, 230, 186), Color.rgb(28, 51, 44), Color.rgb(7, 11, 10), Color.rgb(241, 252, 247), Color.rgb(151, 181, 170));
         page.addView(sectionTitle("字体"), matchWrap());
-        fontChoice(page, "默认无衬线", "sans");
+        fontChoice(page, "默认无衬线", "sans-serif");
+        fontChoice(page, "纤细无衬线", "sans-serif-light");
+        fontChoice(page, "中等无衬线", "sans-serif-medium");
+        fontChoice(page, "紧凑无衬线", "sans-serif-condensed");
         fontChoice(page, "优雅衬线", "serif");
         fontChoice(page, "等宽代码", "monospace");
         fontChoice(page, "圆润手写", "casual");
@@ -1785,7 +2707,7 @@ public class MainActivity extends Activity {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 theme.fontScale = sizes[Math.max(0, Math.min(progress, sizes.length - 1))];
                 sizeLabel.setText("字体大小：" + fontSizeName(theme.fontScale));
-                theme.save(store.prefs());
+                theme.save(store.prefs(), session.qq);
             }
 
             @Override
@@ -1830,7 +2752,7 @@ public class MainActivity extends Activity {
         }
         row.setOnClickListener(view -> {
             theme.fontFamily = family;
-            theme.save(store.prefs());
+            theme.save(store.prefs(), session.qq);
             refreshProfileThemePage();
         });
         addPressEffect(row);
@@ -1882,7 +2804,7 @@ public class MainActivity extends Activity {
             theme.background = previewBackground;
             theme.primaryText = theme.darkMode ? darkPrimaryText : lightPrimaryText;
             theme.secondaryText = theme.darkMode ? darkSecondaryText : lightSecondaryText;
-            theme.save(store.prefs());
+            theme.save(store.prefs(), session.qq);
             refreshProfileThemePage();
         });
         addPressEffect(tile);
@@ -2011,8 +2933,10 @@ public class MainActivity extends Activity {
         button.setText("");
         button.setContentDescription(label);
         button.setAllCaps(false);
-        button.setAlpha(selected ? 1f : 0.45f);
-        button.setCompoundDrawablesWithIntrinsicBounds(getResources().getIdentifier(icon, "drawable", getPackageName()), 0, 0, 0);
+        button.setAlpha(1f);
+        android.graphics.drawable.Drawable d = getResources().getDrawable(getResources().getIdentifier(icon, "drawable", getPackageName())).mutate();
+        d.clearColorFilter();
+        button.setCompoundDrawablesWithIntrinsicBounds(d, null, null, null);
         button.setGravity(Gravity.CENTER);
         button.setPadding(0, 0, 0, 0);
         button.setMinWidth(0);
@@ -2031,7 +2955,8 @@ public class MainActivity extends Activity {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(Color.TRANSPARENT);
         drawable.setCornerRadius(dp(22));
-        drawable.setStroke(dp(1), Color.rgb(254, 201, 99));
+        // 描边上半部分实色，下半部分透明渐变
+        drawable.setStroke(dp(1), Color.TRANSPARENT);
         return drawable;
     }
 
@@ -2159,6 +3084,12 @@ public class MainActivity extends Activity {
                 (int) (Color.blue(first) * inverse + Color.blue(second) * ratio));
     }
 
+    /** 根据 0~1 的进度值生成彩虹色，用于导航栏走马灯边框 */
+    private int rainbowColor(float fraction) {
+        float hue = (fraction * 360f) % 360f;
+        return Color.HSVToColor(new float[]{hue, 0.75f, 0.92f});
+    }
+
     private void addPressEffect(View view) {
         view.setElevation(0);
         if (Build.VERSION.SDK_INT >= 21) {
@@ -2266,6 +3197,7 @@ public class MainActivity extends Activity {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (manager != null) {
             manager.createNotificationChannel(new NotificationChannel(UPLOAD_CHANNEL_ID, "Memories 上传", NotificationManager.IMPORTANCE_LOW));
+            manager.createNotificationChannel(new NotificationChannel(DOWNLOAD_CHANNEL_ID, "Memories 下载", NotificationManager.IMPORTANCE_LOW));
         }
     }
 
@@ -2303,6 +3235,57 @@ public class MainActivity extends Activity {
             builder.setAutoCancel(true);
         }
         manager.notify(UPLOAD_NOTIFICATION_ID, builder.build());
+    }
+
+    private void showDownloadNotification(int finished, int total, String message) {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        Intent intent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        android.app.Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new android.app.Notification.Builder(this, DOWNLOAD_CHANNEL_ID)
+                : new android.app.Notification.Builder(this);
+        int pct = total > 0 ? finished * 100 / total : 0;
+        builder.setSmallIcon(getResources().getIdentifier("ic_download", "drawable", getPackageName()))
+                .setContentTitle("Memories 下载")
+                .setContentText(message)
+                .setContentIntent(pendingIntent)
+                .setOngoing(finished < total)
+                .setProgress(total, finished, false);
+        if (finished >= total) {
+            builder.setAutoCancel(true);
+        }
+        manager.notify(DOWNLOAD_NOTIFICATION_ID, builder.build());
+    }
+
+    private void finishDownloadNotification(int success, int failed) {
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        Intent intent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        android.app.Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new android.app.Notification.Builder(this, DOWNLOAD_CHANNEL_ID)
+                : new android.app.Notification.Builder(this);
+        String summary = "下载完成：成功 " + success + " 张" + (failed > 0 ? "，失败 " + failed + " 张" : "");
+        builder.setSmallIcon(getResources().getIdentifier("ic_download", "drawable", getPackageName()))
+                .setContentTitle("Memories 下载")
+                .setContentText(summary)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setOngoing(false);
+        manager.notify(DOWNLOAD_NOTIFICATION_ID, builder.build());
+    }
+
+    private void cancelDownloadNotification() {
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.cancel(DOWNLOAD_NOTIFICATION_ID);
+        }
     }
 
     private <T> ApiClient.Callback<T> uiCallback(UiSuccess<T> success, UiError error) {

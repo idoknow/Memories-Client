@@ -97,6 +97,15 @@ public class LocalStore {
         prefs.edit().putString("download_folder_uri", uri == null ? "" : uri).apply();
     }
 
+    public void saveUploadTasks(List<UploadTask> tasks) {
+        prefs.edit().putString("upload_tasks", UploadTask.toJsonArray(tasks).toString()).apply();
+    }
+
+    public List<UploadTask> loadUploadTasks() {
+        JSONArray array = getArray("upload_tasks");
+        return UploadTask.fromJsonArray(array);
+    }
+
     private JSONArray getArray(String key) {
         try {
             return new JSONArray(prefs.getString(key, "[]"));

@@ -14,31 +14,39 @@ public class ThemeConfig {
     public String fontFamily;
     public String presetName;
 
-    public static ThemeConfig load(SharedPreferences prefs) {
+    private static String key(String base, String qq) {
+        return qq == null || qq.isEmpty() ? base : base + "_" + qq;
+    }
+
+    public static ThemeConfig load(SharedPreferences prefs, String qq) {
         ThemeConfig theme = new ThemeConfig();
-        theme.darkMode = prefs.getBoolean("theme_dark", false);
-        theme.primaryButton = prefs.getInt("theme_primary_button", theme.darkMode ? AppConfig.DARK_PRIMARY_BUTTON : AppConfig.LIGHT_PRIMARY_BUTTON);
-        theme.secondaryButton = prefs.getInt("theme_secondary_button", theme.darkMode ? AppConfig.DARK_SECONDARY_BUTTON : AppConfig.LIGHT_SECONDARY_BUTTON);
-        theme.background = prefs.getInt("theme_background", theme.darkMode ? AppConfig.DARK_BACKGROUND : AppConfig.LIGHT_BACKGROUND);
-        theme.primaryText = prefs.getInt("theme_primary_text", theme.darkMode ? AppConfig.DARK_PRIMARY_TEXT : AppConfig.LIGHT_PRIMARY_TEXT);
-        theme.secondaryText = prefs.getInt("theme_secondary_text", theme.darkMode ? AppConfig.DARK_SECONDARY_TEXT : AppConfig.LIGHT_SECONDARY_TEXT);
-        theme.fontScale = prefs.getFloat("theme_font_scale", 1.0f);
-        theme.fontFamily = prefs.getString("theme_font_family", "sans");
-        theme.presetName = prefs.getString("theme_preset_name", "default");
+        theme.darkMode = prefs.getBoolean(key("theme_dark", qq), false);
+        boolean darkForDefaults = theme.darkMode || (qq != null && !qq.isEmpty() && prefs.getBoolean("theme_dark_" + qq, false));
+        theme.primaryButton = prefs.getInt(key("theme_primary_button", qq), darkForDefaults ? AppConfig.DARK_PRIMARY_BUTTON : AppConfig.LIGHT_PRIMARY_BUTTON);
+        theme.secondaryButton = prefs.getInt(key("theme_secondary_button", qq), darkForDefaults ? AppConfig.DARK_SECONDARY_BUTTON : AppConfig.LIGHT_SECONDARY_BUTTON);
+        theme.background = prefs.getInt(key("theme_background", qq), darkForDefaults ? AppConfig.DARK_BACKGROUND : AppConfig.LIGHT_BACKGROUND);
+        theme.primaryText = prefs.getInt(key("theme_primary_text", qq), darkForDefaults ? AppConfig.DARK_PRIMARY_TEXT : AppConfig.LIGHT_PRIMARY_TEXT);
+        theme.secondaryText = prefs.getInt(key("theme_secondary_text", qq), darkForDefaults ? AppConfig.DARK_SECONDARY_TEXT : AppConfig.LIGHT_SECONDARY_TEXT);
+        theme.fontScale = prefs.getFloat(key("theme_font_scale", qq), 1.0f);
+        theme.fontFamily = prefs.getString(key("theme_font_family", qq), "sans-serif");
+        if ("sans".equals(theme.fontFamily)) {
+            theme.fontFamily = "sans-serif";
+        }
+        theme.presetName = prefs.getString(key("theme_preset_name", qq), "default");
         return theme;
     }
 
-    public void save(SharedPreferences prefs) {
+    public void save(SharedPreferences prefs, String qq) {
         prefs.edit()
-                .putBoolean("theme_dark", darkMode)
-                .putInt("theme_primary_button", primaryButton)
-                .putInt("theme_secondary_button", secondaryButton)
-                .putInt("theme_background", background)
-                .putInt("theme_primary_text", primaryText)
-                .putInt("theme_secondary_text", secondaryText)
-                .putFloat("theme_font_scale", fontScale)
-                .putString("theme_font_family", fontFamily)
-                .putString("theme_preset_name", presetName)
+                .putBoolean(key("theme_dark", qq), darkMode)
+                .putInt(key("theme_primary_button", qq), primaryButton)
+                .putInt(key("theme_secondary_button", qq), secondaryButton)
+                .putInt(key("theme_background", qq), background)
+                .putInt(key("theme_primary_text", qq), primaryText)
+                .putInt(key("theme_secondary_text", qq), secondaryText)
+                .putFloat(key("theme_font_scale", qq), fontScale)
+                .putString(key("theme_font_family", qq), fontFamily)
+                .putString(key("theme_preset_name", qq), presetName)
                 .apply();
     }
 
