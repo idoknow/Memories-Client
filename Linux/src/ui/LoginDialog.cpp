@@ -274,7 +274,7 @@ void LoginDialog::handleCallback() {
         QString html = "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
                        "<title>授权完成</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;"
                        "height:100vh;margin:0;background:#f5f5f5;color:#333;text-align:center}"
-                       "h2{color:#1D6E5A}</style></head><body><div><h2>✓ 授权完成</h2><p>请返回回忆映像客户端。</p>"
+                       "h2{color:#1D6E5A}</style></head><body><div><h2>✓ 授权完成</h2><p>请返回 Memories 客户端。</p>"
                        "<p style='color:#999;font-size:13px'>此页面可安全关闭</p></div>"
                        "<script>setTimeout(function(){window.close();},600);</script></body></html>";
         QByteArray body = html.toUtf8();

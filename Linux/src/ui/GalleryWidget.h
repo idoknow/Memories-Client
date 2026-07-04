@@ -12,6 +12,7 @@ class QLabel;
 class QStackedWidget;
 class QToolButton;
 class ApiClient;
+class QNetworkAccessManager;
 
 class GalleryWidget : public QWidget {
     Q_OBJECT
@@ -46,6 +47,7 @@ private slots:
 private:
     void setupUi();
     void addThumbnail(const ImageInfo& info);
+    void applyThumbnailPixmap(QToolButton* thumbBtn, const QPixmap& pixmap);
     void refreshGrid();
 
     QScrollArea* m_scrollArea;
@@ -64,6 +66,7 @@ private:
     QPushButton* m_selectModeBtn;
     QLabel* m_selectCountLabel;
     QProgressBar* m_progressBar;
+    QNetworkAccessManager* m_networkManager;
 
     QList<ImageInfo> m_images;
     QMap<QString, bool> m_selections;  // url -> selected

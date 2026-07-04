@@ -32,7 +32,7 @@ ImageCache* Application::imageCache() const { return m_imageCache.get(); }
 void Application::initialize() {
     if (m_initialized) return;
 
-    LOG_INFO("Initializing MemoriesClient...");
+    LOG_INFO("Initializing Memories...");
 
     auto* s = m_settings.get();
 

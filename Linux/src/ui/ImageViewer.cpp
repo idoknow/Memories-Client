@@ -32,6 +32,25 @@
 #include <QScrollArea>
 #include <QTimer>
 
+namespace {
+constexpr double kMinPreviewScale = 0.05;
+constexpr double kMaxPreviewScale = 8.0;
+constexpr qint64 kMaxPreviewPixels = 25000000;
+
+QSize limitedPreviewSize(const QSize& sourceSize, double scaleFactor) {
+    if (sourceSize.isEmpty()) return QSize();
+
+    QSizeF scaledSize(sourceSize.width() * scaleFactor, sourceSize.height() * scaleFactor);
+    double pixelCount = scaledSize.width() * scaledSize.height();
+    if (pixelCount > kMaxPreviewPixels) {
+        double limitFactor = qSqrt(static_cast<double>(kMaxPreviewPixels) / pixelCount);
+        scaledSize *= limitFactor;
+    }
+
+    return QSize(qMax(1, qRound(scaledSize.width())), qMax(1, qRound(scaledSize.height())));
+}
+}
+
 ImageViewer::ImageViewer(QWidget* parent)
     : QWidget(parent)
     , m_scrollArea(new QScrollArea(this))
@@ -199,9 +218,7 @@ void ImageViewer::loadImage(const QString& url) {
             if (finishedReply->error() == QNetworkReply::NoError) {
                 QByteArray data = finishedReply->readAll();
                 QPixmap pixmap;
-                pixmap.loadFromData(data);
-                if (!pixmap.isNull()) {
-                    cache->putPixmap(url, pixmap);
+                if (cache->putData(url, data, &pixmap)) {
                     onImageLoaded(pixmap);
                 }
             } else {
@@ -230,7 +247,7 @@ void ImageViewer::applyTransforms() {
             result = result.scaled(viewSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         }
     } else {
-        QSize newSize = result.size() * m_scaleFactor;
+        QSize newSize = limitedPreviewSize(result.size(), m_scaleFactor);
         result = result.scaled(newSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
 
@@ -254,22 +271,16 @@ QPixmap ImageViewer::transformedPixmap() const {
             m_flipH ? -1.0 : 1.0, m_flipV ? -1.0 : 1.0));
     }
 
-    // Apply scale
-    if (m_scaleFactor != 1.0) {
-        QSize newSize = result.size() * m_scaleFactor;
-        result = result.scaled(newSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    }
-
     return result;
 }
 
 void ImageViewer::zoomIn() {
-    m_scaleFactor = qMin(m_scaleFactor * 1.25, 10.0);
+    m_scaleFactor = qMin(m_scaleFactor * 1.25, kMaxPreviewScale);
     applyTransforms();
 }
 
 void ImageViewer::zoomOut() {
-    m_scaleFactor = qMax(m_scaleFactor / 1.25, 0.1);
+    m_scaleFactor = qMax(m_scaleFactor / 1.25, kMinPreviewScale);
     applyTransforms();
 }
 
@@ -429,7 +440,7 @@ bool ImageViewer::eventFilter(QObject* obj, QEvent* event) {
         auto* we = static_cast<QWheelEvent*>(event);
         double factor = (we->angleDelta().y() > 0) ? 1.12 : (1.0 / 1.12);
         double newScale = m_scaleFactor * factor;
-        newScale = qBound(0.05, newScale, 20.0);
+        newScale = qBound(kMinPreviewScale, newScale, kMaxPreviewScale);
 
         if (qFuzzyCompare(newScale, m_scaleFactor)) return true;
 

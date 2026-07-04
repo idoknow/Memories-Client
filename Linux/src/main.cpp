@@ -18,7 +18,7 @@
 // Headless mode - just print status
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
-    QCoreApplication::setApplicationName("MemoriesClient");
+    QCoreApplication::setApplicationName("Memories");
     QCoreApplication::setApplicationVersion("1.0.0");
 
     QCommandLineParser parser;
@@ -84,9 +84,9 @@ int main(int argc, char* argv[]) {
 // GUI mode
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-    QApplication::setApplicationName("MemoriesClient");
+    QApplication::setApplicationName("Memories");
     QApplication::setApplicationVersion("1.0.0");
-    QApplication::setOrganizationName("MemoriesClient");
+    QApplication::setOrganizationName("memories");
     QApplication::setOrganizationDomain("memories.mrcwoods.com");
 
     // Set default application icon

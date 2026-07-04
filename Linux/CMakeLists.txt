@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MemoriesClient VERSION 1.0.0 LANGUAGES CXX)
+project(Memories VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -89,11 +89,31 @@ if(BUILD_GUI)
     # Platform-specific
     if(UNIX AND NOT APPLE)
         target_link_libraries(${PROJECT_NAME} PRIVATE X11)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            file(GLOB _candidate_libstdcxx_paths "/usr/lib/gcc/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/*/libstdc++.so")
+            list(SORT _candidate_libstdcxx_paths COMPARE NATURAL ORDER DESCENDING)
+            foreach(_candidate_libstdcxx IN LISTS _candidate_libstdcxx_paths)
+                execute_process(
+                    COMMAND strings "${_candidate_libstdcxx}"
+                    COMMAND grep -q "CXXABI_1.3.15"
+                    RESULT_VARIABLE _has_required_cxxabi
+                    OUTPUT_QUIET
+                    ERROR_QUIET
+                )
+                if(_has_required_cxxabi EQUAL 0)
+                    get_filename_component(_required_libstdcxx_dir "${_candidate_libstdcxx}" DIRECTORY)
+                    target_link_directories(${PROJECT_NAME} BEFORE PRIVATE "${_required_libstdcxx_dir}")
+                    target_link_options(${PROJECT_NAME} PRIVATE "-Wl,-rpath,${_required_libstdcxx_dir}")
+                    break()
+                endif()
+            endforeach()
+        endif()
     endif()
 
     # Install
     install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
-    install(DIRECTORY resources/ DESTINATION share/${PROJECT_NAME}/resources)
+    install(FILES resources/memories-client.desktop DESTINATION share/applications)
+    install(FILES resources/app-icon.svg DESTINATION share/icons/hicolor/scalable/apps RENAME memories.svg)
 else()
     # Headless only
     add_executable(${PROJECT_NAME}-headless ${SOURCES} ${HEADERS})
@@ -107,8 +127,15 @@ else()
 endif()
 
 # ---- Packaging ----
-set(CPACK_PACKAGE_NAME "MemoriesClient")
+set(CPACK_PACKAGE_NAME "memories")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Memories Image Client")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Memories - Image Management Client")
+set(CPACK_PACKAGE_CONTACT "idoknow <i@mrcwoods.com>")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "idoknow")
+set(CPACK_DEBIAN_PACKAGE_SECTION "graphics")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-base-dev (>= 6.2)")
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_GROUP "Applications/Graphics")
+set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtbase >= 6.2")
 set(CPACK_GENERATOR "DEB;RPM;TGZ;AppImage")
 include(CPack)

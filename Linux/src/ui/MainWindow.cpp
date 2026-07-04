@@ -51,7 +51,7 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow() = default;
 
 void MainWindow::setupUi() {
-    setWindowTitle("回忆映像");
+    setWindowTitle("Memories");
     setWindowIcon(QIcon(":/icons/app.svg"));
     resize(1280, 800);
     setMinimumSize(800, 600);
@@ -114,7 +114,7 @@ void MainWindow::setupUi() {
 }
 
 void MainWindow::setupTitleBar() {
-    m_titleBar = new AppleTitleBar(this, "回忆映像", true);
+    m_titleBar = new AppleTitleBar(this, "Memories", true);
     m_titleBar->setIcon(QIcon(":/icons/app.svg"));
 }
 
@@ -193,8 +193,8 @@ void MainWindow::setupMenuBar(QMenuBar* menuBar) {
     auto* helpMenu = menuBar->addMenu(tr("帮助(&H)"));
     auto* aboutAction = helpMenu->addAction(tr("关于(&A)"));
     connect(aboutAction, &QAction::triggered, this, [this]() {
-        QMessageBox::about(this, tr("关于回忆映像"),
-            tr("回忆映像 v1.0.0\n跨平台图片管理与分享客户端。"));
+        QMessageBox::about(this, tr("关于 Memories"),
+            tr("Memories v1.0.0\n跨平台图片管理与分享客户端。"));
     });
 }
 
@@ -234,6 +234,8 @@ void MainWindow::setupToolBar(QToolBar* toolbar) {
 }
 
 void MainWindow::setupStatusBar() {
+    m_healthLabel->setProperty("statusPill", "checking");
+    m_statusLabel->setProperty("statusText", true);
     statusBar()->addPermanentWidget(m_healthLabel);
     statusBar()->addPermanentWidget(m_statusLabel, 1);
     m_statusLabel->setText(tr("就绪"));
@@ -243,7 +245,7 @@ void MainWindow::setupStatusBar() {
 void MainWindow::setupSystemTray() {
     m_trayIcon = new QSystemTrayIcon(
         QIcon(":/icons/app.svg"), this);
-    m_trayIcon->setToolTip("回忆映像");
+    m_trayIcon->setToolTip("Memories");
 
     auto* trayMenu = new QMenu(this);
     trayMenu->addAction(tr("显示主窗口"), this, &QWidget::show);
@@ -277,15 +279,22 @@ void MainWindow::applyTheme() {
 
 void MainWindow::checkServiceHealth() {
     m_healthLabel->setText(tr("● Checking..."));
+    m_healthLabel->setProperty("statusPill", "checking");
+    m_healthLabel->style()->unpolish(m_healthLabel);
+    m_healthLabel->style()->polish(m_healthLabel);
     auto* checker = Application::instance()->healthChecker();
     connect(checker, &HealthChecker::healthOk, this, [this]() {
         m_healthLabel->setText(tr("● 已连接"));
-        m_healthLabel->setStyleSheet("color: green;");
+        m_healthLabel->setProperty("statusPill", "ok");
+        m_healthLabel->style()->unpolish(m_healthLabel);
+        m_healthLabel->style()->polish(m_healthLabel);
         m_statusLabel->setText(tr("服务运行正常"));
     });
     connect(checker, &HealthChecker::healthFail, this, [this](const QString& err) {
         m_healthLabel->setText(tr("● 未连接"));
-        m_healthLabel->setStyleSheet("color: red;");
+        m_healthLabel->setProperty("statusPill", "error");
+        m_healthLabel->style()->unpolish(m_healthLabel);
+        m_healthLabel->style()->polish(m_healthLabel);
         m_statusLabel->setText(tr("服务不可达: ") + err);
     });
     checker->ping();
@@ -350,7 +359,7 @@ void MainWindow::updateUserDisplay() {
     if (s->isLoggedIn()) {
         QString username = s->userName();
         m_statusLabel->setText(username + " (QQ: " + s->userQq() + ")");
-        setWindowTitle("回忆映像 - " + username + " @" + s->userTenantName());
+        setWindowTitle("Memories - " + username + " @" + s->userTenantName());
 
         m_avatarLabel->setText(username.isEmpty() ? "?" : username.left(1));
         m_avatarLabel->setVisible(true);
@@ -359,7 +368,7 @@ void MainWindow::updateUserDisplay() {
         m_accountLogoutAction->setVisible(true);
     } else {
         m_statusLabel->setText(tr("就绪 - 未登录"));
-        setWindowTitle("回忆映像");
+        setWindowTitle("Memories");
         m_avatarLabel->setVisible(false);
 
         m_accountLoginAction->setText(tr("登录(&L)..."));
@@ -370,7 +379,7 @@ void MainWindow::updateUserDisplay() {
 void MainWindow::closeEvent(QCloseEvent* event) {
     if (m_trayIcon && m_trayIcon->isVisible()) {
         hide();
-        m_trayIcon->showMessage("回忆映像",
+        m_trayIcon->showMessage("Memories",
             tr("应用已最小化到系统托盘"), QSystemTrayIcon::Information, 2000);
         event->ignore();
     } else {

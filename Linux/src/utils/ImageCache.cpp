@@ -1,7 +1,10 @@
 #include "utils/ImageCache.h"
 #include "utils/Logger.h"
 #include <QCryptographicHash>
+#include <QDateTime>
+#include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QDirIterator>
 #include <QStandardPaths>
 
@@ -55,6 +58,8 @@ QPixmap ImageCache::getPixmap(const QString& key) {
     if (QFileInfo::exists(path)) {
         QPixmap pix(path);
         if (!pix.isNull()) {
+            QFile file(path);
+            file.setFileTime(QDateTime::currentDateTime(), QFileDevice::FileModificationTime);
             m_memoryCache.insert(key, new QPixmap(pix));
             return pix;
         }
@@ -80,6 +85,34 @@ void ImageCache::putPixmap(const QString& key, const QPixmap& pixmap) {
 
     // Check disk usage periodically
     pruneDiskCache(m_maxDiskBytes);
+}
+
+bool ImageCache::putData(const QString& key, const QByteArray& data, QPixmap* decodedPixmap) {
+    QPixmap pixmap;
+    if (!pixmap.loadFromData(data)) {
+        return false;
+    }
+
+    QMutexLocker lock(&m_mutex);
+    m_memoryCache.insert(key, new QPixmap(pixmap));
+
+    QString path = toLocalPath(key);
+    QFileInfo fi(path);
+    QDir().mkpath(fi.absolutePath());
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return false;
+    }
+    if (file.write(data) != data.size() || !file.commit()) {
+        return false;
+    }
+
+    if (decodedPixmap) {
+        *decodedPixmap = pixmap;
+    }
+    pruneDiskCache(m_maxDiskBytes);
+    return true;
 }
 
 QString ImageCache::localPath(const QString& urlKey) const {

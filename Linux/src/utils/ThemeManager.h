@@ -21,6 +21,8 @@ struct ThemeColors {
     QString accent;
     QString accentHover;
     QString accentLight;
+    QString accentSoft;
+    QString accentWarm;
     // Misc
     QString toolbarBg;
     QString menubarBg;

@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QByteArray>
 #include <QDir>
 #include <QPixmap>
 #include <QCache>
@@ -21,6 +22,7 @@ public:
     QPixmap getPixmap(const QString& key);
     QPixmap getLocalPixmap(const QString& localPath);
     void putPixmap(const QString& key, const QPixmap& pixmap);
+    bool putData(const QString& key, const QByteArray& data, QPixmap* decodedPixmap = nullptr);
 
     QString localPath(const QString& urlKey) const;
     bool hasLocal(const QString& urlKey) const;

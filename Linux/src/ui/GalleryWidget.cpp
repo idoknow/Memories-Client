@@ -30,6 +30,10 @@
 #include <QLabel>
 #include <QKeyEvent>
 #include <QTimer>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QStyle>
 
 GalleryWidget::GalleryWidget(QWidget* parent)
     : QWidget(parent)
@@ -49,6 +53,7 @@ GalleryWidget::GalleryWidget(QWidget* parent)
     , m_selectModeBtn(new QPushButton(tr("☐ 选择"), this))
     , m_selectCountLabel(new QLabel(this))
     , m_progressBar(new QProgressBar(this))
+    , m_networkManager(new QNetworkAccessManager(this))
 {
     setupUi();
 }
@@ -60,11 +65,11 @@ void GalleryWidget::setupUi() {
 
     // Batch toolbar
     auto* batchBar = new QHBoxLayout();
-    batchBar->setContentsMargins(16, 8, 16, 8);
-    batchBar->setSpacing(8);
+    batchBar->setContentsMargins(18, 12, 18, 10);
+    batchBar->setSpacing(10);
     batchBar->addWidget(m_selectModeBtn);
 
-    m_selectCountLabel->setStyleSheet("color: #64748b; font-size: 12px; font-weight: 600;");
+    m_selectCountLabel->setProperty("galleryMeta", true);
     m_selectCountLabel->setVisible(false);
     batchBar->addWidget(m_selectCountLabel);
 
@@ -103,8 +108,8 @@ void GalleryWidget::setupUi() {
     mainLayout->addLayout(batchBar);
 
     // Grid
-    m_flowLayout->setContentsMargins(16, 12, 16, 16);
-    m_flowLayout->setSpacing(8);
+    m_flowLayout->setContentsMargins(18, 14, 18, 18);
+    m_flowLayout->setSpacing(10);
     m_gridContainer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     m_scrollArea->setWidget(m_gridContainer);
     m_scrollArea->setWidgetResizable(true);
@@ -113,9 +118,9 @@ void GalleryWidget::setupUi() {
 
     // State pages
     m_loadingLabel->setAlignment(Qt::AlignCenter);
-    m_loadingLabel->setStyleSheet("color: #64748b; font-size: 15px;");
+    m_loadingLabel->setProperty("galleryState", true);
     m_emptyLabel->setAlignment(Qt::AlignCenter);
-    m_emptyLabel->setStyleSheet("color: #94a3b8; font-size: 15px;");
+    m_emptyLabel->setProperty("galleryState", true);
 
     m_stateStack->addWidget(m_loadingLabel);
     m_stateStack->addWidget(m_emptyLabel);
@@ -125,8 +130,12 @@ void GalleryWidget::setupUi() {
 
     // Bottom bar
     auto* bottomBar = new QHBoxLayout();
+    bottomBar->setContentsMargins(18, 8, 18, 16);
+    bottomBar->setSpacing(12);
     m_progressBar->setVisible(false);
-    m_progressBar->setMaximumWidth(200);
+    m_progressBar->setFixedHeight(10);
+    m_progressBar->setMaximumWidth(240);
+    m_progressBar->setTextVisible(false);
     bottomBar->addWidget(m_progressBar);
     bottomBar->addStretch();
     m_loadMoreBtn->setVisible(false);
@@ -228,11 +237,8 @@ void GalleryWidget::addThumbnail(const ImageInfo& info) {
     thumbBtn->setIconSize(QSize(172, 172));
     thumbBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     thumbBtn->setCursor(Qt::PointingHandCursor);
-    thumbBtn->setStyleSheet(
-        "QToolButton { background: rgba(255,255,255,0.45); border-radius: 10px; "
-        "border: 1.5px solid rgba(255,255,255,0.5); padding: 2px; }"
-        "QToolButton:hover { background: rgba(255,255,255,0.75); "
-        "border-color: rgba(29,110,90,0.3); }");
+    thumbBtn->setProperty("galleryThumb", true);
+    thumbBtn->setProperty("selected", false);
 
     // We'll set span after checking aspect ratio
     thumbBtn->setProperty("span", 1);
@@ -241,20 +247,23 @@ void GalleryWidget::addThumbnail(const ImageInfo& info) {
     auto* cache = Application::instance()->imageCache();
     QPixmap cached = cache->getPixmap(info.url);
     if (!cached.isNull()) {
-        thumbBtn->setIcon(QIcon(cached.scaled(172, 172, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
-        // Detect aspect ratio for span
-        double ar = (double)cached.width() / cached.height();
-        if (ar > 1.5) {
-            thumbBtn->setFixedSize(368, 180); // 2x wide
-            thumbBtn->setIconSize(QSize(360, 172));
-            thumbBtn->setProperty("span", 2);
-        } else if (ar < 0.67) {
-            thumbBtn->setFixedSize(180, 368); // 2x tall
-            thumbBtn->setIconSize(QSize(172, 360));
-            thumbBtn->setProperty("span", 1); // tall uses 1x horizontal, 2x vertical
-        }
+        applyThumbnailPixmap(thumbBtn, cached);
     } else {
         thumbBtn->setText("...");
+        auto* reply = m_networkManager->get(QNetworkRequest(QUrl(info.url)));
+        connect(reply, &QNetworkReply::finished, this, [this, reply, cache, url = info.url, thumbBtn]() {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError || thumbBtn->property("imageUrl").toString() != url) {
+                return;
+            }
+
+            QPixmap pixmap;
+            if (cache->putData(url, reply->readAll(), &pixmap)) {
+                thumbBtn->setText(QString());
+                applyThumbnailPixmap(thumbBtn, pixmap);
+                m_flowLayout->invalidate();
+            }
+        });
     }
 
     // Store URL and init selection state
@@ -267,14 +276,10 @@ void GalleryWidget::addThumbnail(const ImageInfo& info) {
         if (m_selectionMode) {
             bool& sel = m_selections[url];
             sel = !sel;
-            thumbBtn->setStyleSheet(sel ?
-                "QToolButton { background: rgba(29,110,90,0.18); border-radius: 10px; "
-                "border: 2px solid #1D6E5A; padding: 2px; }"
-                "QToolButton:hover { background: rgba(29,110,90,0.22); }" :
-                "QToolButton { background: rgba(255,255,255,0.45); border-radius: 10px; "
-                "border: 1.5px solid rgba(255,255,255,0.5); padding: 2px; }"
-                "QToolButton:hover { background: rgba(255,255,255,0.75); "
-                "border-color: rgba(29,110,90,0.3); }");
+            thumbBtn->setProperty("selected", sel);
+            thumbBtn->style()->unpolish(thumbBtn);
+            thumbBtn->style()->polish(thumbBtn);
+            thumbBtn->update();
             m_selectCountLabel->setText(tr("已选 %1 张").arg(selectedCount()));
             // Auto-toggle button when all/none selected
             m_selectAllBtn->setText(selectedCount() == m_images.size() ? tr("取消全选") : tr("全选"));
@@ -284,6 +289,21 @@ void GalleryWidget::addThumbnail(const ImageInfo& info) {
     });
 
     m_flowLayout->addWidget(thumbBtn);
+}
+
+void GalleryWidget::applyThumbnailPixmap(QToolButton* thumbBtn, const QPixmap& pixmap) {
+    thumbBtn->setIcon(QIcon(pixmap.scaled(172, 172, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+
+    double ar = static_cast<double>(pixmap.width()) / pixmap.height();
+    if (ar > 1.5) {
+        thumbBtn->setFixedSize(368, 180);
+        thumbBtn->setIconSize(QSize(360, 172));
+        thumbBtn->setProperty("span", 2);
+    } else if (ar < 0.67) {
+        thumbBtn->setFixedSize(180, 368);
+        thumbBtn->setIconSize(QSize(172, 360));
+        thumbBtn->setProperty("span", 1);
+    }
 }
 
 void GalleryWidget::onThumbnailClicked(const QString& url) {
@@ -297,10 +317,10 @@ void GalleryWidget::onSelectAll() {
     for (int i = 0; i < m_flowLayout->count(); ++i) {
         auto* item = m_flowLayout->itemAt(i);
         if (auto* btn = qobject_cast<QToolButton*>(item->widget())) {
-            btn->setStyleSheet(
-                "QToolButton { background: rgba(29,110,90,0.18); border-radius: 10px; "
-                "border: 2px solid #1D6E5A; padding: 2px; }"
-                "QToolButton:hover { background: rgba(29,110,90,0.22); }");
+            btn->setProperty("selected", true);
+            btn->style()->unpolish(btn);
+            btn->style()->polish(btn);
+            btn->update();
         }
     }
     m_selectAllBtn->setText(tr("取消全选"));
@@ -314,11 +334,10 @@ void GalleryWidget::onDeselectAll() {
     for (int i = 0; i < m_flowLayout->count(); ++i) {
         auto* item = m_flowLayout->itemAt(i);
         if (auto* btn = qobject_cast<QToolButton*>(item->widget())) {
-            btn->setStyleSheet(
-                "QToolButton { background: rgba(255,255,255,0.45); border-radius: 10px; "
-                "border: 1.5px solid rgba(255,255,255,0.5); padding: 2px; }"
-                "QToolButton:hover { background: rgba(255,255,255,0.75); "
-                "border-color: rgba(29,110,90,0.3); }");
+            btn->setProperty("selected", false);
+            btn->style()->unpolish(btn);
+            btn->style()->polish(btn);
+            btn->update();
         }
     }
     m_selectAllBtn->setText(tr("全选"));

@@ -1,3 +1,7 @@
 {
-    "cmake.sourceDirectory": "/home/mrcwoods/code/Memories-Client/cpp-client"
+    "cmake.sourceDirectory": "${workspaceFolder}/Linux",
+    "cmake.buildDirectory": "${workspaceFolder}/Linux/build-gcc14",
+    "cmake.configureSettings": {
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++"
+    }
 }
