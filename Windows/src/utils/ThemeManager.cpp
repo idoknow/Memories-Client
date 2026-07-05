@@ -153,8 +153,8 @@ QComboBox::down-arrow { width: 10px; height: 10px; }
 QComboBox QAbstractItemView { background: #1e293b; border: 2px solid #334155; border-radius: 10px; color: #e2e8f0; padding: 8px; }
 QComboBox QAbstractItemView::item { padding: 10px 16px; border-radius: 8px; }
 QComboBox QAbstractItemView::item:selected { background: #1D6E5A; color: #ffffff; }
-QGroupBox { background: #1e293b; border: 2px solid #334155; border-radius: 16px; margin-top: 24px; padding: 28px 20px 20px; font-weight: 700; color: #e2e8f0; }
-QGroupBox::title { padding: 6px 16px; margin-left: 20px; background: #1e293b; border-radius: 10px; border: 2px solid #334155; }
+QGroupBox { background: #1e293b; border: 2px solid #334155; border-radius: 16px; margin-top: 24px; padding: 24px 20px 20px; font-weight: 700; color: #e2e8f0; }
+QGroupBox::title { padding: 6px 14px; margin-left: 20px; margin-top: -16px; background: #1e293b; border-radius: 8px; border: 2px solid #334155; }
 QTabWidget::pane { background: #1e293b; border: 2px solid #334155; border-radius: 12px; padding: 16px; }
 QTabBar::tab { padding: 10px 24px; margin: 4px 6px; border-radius: 10px; color: #64748b; font-weight: 500; }
 QTabBar::tab:selected { background: #1e293b; color: #1D6E5A; font-weight: 700; border: 2px solid #334155; border-bottom: none; }
@@ -218,8 +218,8 @@ QComboBox::down-arrow { width: 10px; height: 10px; }
 QComboBox QAbstractItemView { background: #ffffff; border: 2px solid #cbd5e1; border-radius: 10px; padding: 8px; }
 QComboBox QAbstractItemView::item { padding: 10px 16px; border-radius: 8px; color: #1e293b; }
 QComboBox QAbstractItemView::item:selected { background: #ecfdf5; color: #1D6E5A; }
-QGroupBox { background: #ffffff; border: 2px solid #94a3b8; border-radius: 16px; margin-top: 24px; padding: 28px 20px 20px; font-weight: 700; color: #1e293b; }
-QGroupBox::title { padding: 6px 16px; margin-left: 20px; background: #ffffff; border-radius: 10px; border: 2px solid #94a3b8; }
+QGroupBox { background: #ffffff; border: 2px solid #94a3b8; border-radius: 16px; margin-top: 24px; padding: 24px 20px 20px; font-weight: 700; color: #1e293b; }
+QGroupBox::title { padding: 6px 14px; margin-left: 20px; margin-top: -16px; background: #ffffff; border-radius: 8px; border: 2px solid #94a3b8; }
 QTabWidget::pane { background: #ffffff; border: 2px solid #94a3b8; border-radius: 12px; padding: 16px; }
 QTabBar::tab { padding: 10px 24px; margin: 4px 6px; border-radius: 10px; color: #64748b; font-weight: 500; }
 QTabBar::tab:selected { background: #ffffff; color: #1D6E5A; font-weight: 700; border: 2px solid #94a3b8; border-bottom: none; }
