@@ -31,6 +31,7 @@
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QTimer>
+#include <windows.h>
 
 namespace {
 constexpr double kMinPreviewScale = 0.05;
@@ -364,14 +365,14 @@ void ImageViewer::shareImage() {
 void ImageViewer::setAsWallpaper() {
     if (m_currentUrl.isEmpty()) return;
 
-    // Save to temp file
     QString tmpPath = QDir::tempPath() + "/memories_wallpaper.png";
     auto pixmap = transformedPixmap();
     pixmap.save(tmpPath);
 
-    // Set wallpaper via platform-specific commands
-#ifdef Q_OS_LINUX
-    // Try various desktop environments
+#ifdef Q_OS_WINDOWS
+    const wchar_t* widePath = reinterpret_cast<const wchar_t*>(tmpPath.utf16());
+    SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, (LPVOID)widePath, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+#else
     QStringList cmds = {
         "gsettings set org.gnome.desktop.background picture-uri file://" + tmpPath,
         "gsettings set org.gnome.desktop.background picture-uri-dark file://" + tmpPath,

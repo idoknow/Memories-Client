@@ -122,32 +122,33 @@ void SettingsDialog::setupUi() {
 
     QString btnStyle = R"(
         QPushButton {
-            font-size: 20px;
-            font-weight: 800;
-            border-radius: 10px;
-            border: 2px solid #cbd5e1;
-            background: #ffffff;
-            color: #475569;
+            font-size: 18px;
+            font-weight: 900;
+            border-radius: 8px;
+            border: none;
+            background: #f1f5f9;
+            color: #64748b;
+            min-width: 32px;
+            min-height: 32px;
         }
         QPushButton:hover {
-            border-color: #1D6E5A;
-            color: #1D6E5A;
-            background: #ecfdf5;
+            background: #e2e8f0;
+            color: #334155;
         }
         QPushButton:pressed {
-            background: #1D6E5A;
-            color: #ffffff;
-            border-color: #1D6E5A;
+            background: #cbd5e1;
+            color: #1e293b;
         }
         QPushButton:disabled {
-            border-color: #e2e8f0;
-            color: #94a3b8;
             background: #f8fafc;
+            color: #cbd5e1;
         }
     )";
 
     minusBtn->setStyleSheet(btnStyle);
     plusBtn->setStyleSheet(btnStyle);
+    minusBtn->setFixedSize(32, 32);
+    plusBtn->setFixedSize(32, 32);
 
     connect(minusBtn, &QPushButton::clicked, this, [this, minusBtn, plusBtn]() {
         int v = m_fontSizeSpin->value();
@@ -298,12 +299,29 @@ void SettingsDialog::onThemeChanged(int index) {
     bool isDark = (theme == "dark");
     qApp->setStyleSheet(ThemeManager::instance().buildStylesheet(isDark));
 }
-void SettingsDialog::onFontSizeChanged(int) { /* Preview */ }
-void SettingsDialog::onFontFamilyChanged(const QFont&) { /* Preview */ }
+void SettingsDialog::onFontSizeChanged(int size) {
+    QFont font = qApp->font();
+    font.setPointSize(size);
+    qApp->setFont(font);
+    Application::instance()->settings()->setFontSize(size);
+    Application::instance()->settings()->save();
+}
+
+void SettingsDialog::onFontFamilyChanged(const QFont& font) {
+    QFont appFont = qApp->font();
+    appFont.setFamily(font.family());
+    qApp->setFont(appFont);
+    Application::instance()->settings()->setFontFamily(font.family());
+    Application::instance()->settings()->save();
+}
 
 void SettingsDialog::onApply() {
     saveSettings();
-    QMessageBox::information(this, tr("设置"), tr("设置已保存。"));
+    QFont font = qApp->font();
+    font.setPointSize(m_fontSizeSpin->value());
+    font.setFamily(m_fontCombo->currentFont().family());
+    qApp->setFont(font);
+    QMessageBox::information(this, tr("设置"), tr("设置已保存并应用。"));
     accept();
 }
 

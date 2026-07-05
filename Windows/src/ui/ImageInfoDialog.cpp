@@ -118,16 +118,22 @@ void ImageInfoDialog::queryImage(const QString& imageUrl) {
     m_loadingLabel->setVisible(true);
     m_loadingLabel->setText(tr("正在查询图片信息..."));
 
-    // Extract filename from URL for querying img.scdn.io API
-    QString filename = imageUrl.section('/', -1);
+    QUrl url(imageUrl);
+    QString filename = url.path().section('/', -1);
 
-    // Query the scnd.io API
-    QUrl url("https://img.scdn.io/api/v1.php");
+    if (filename.isEmpty()) {
+        m_loadingLabel->setText(tr("无法从URL中提取文件名。"));
+        return;
+    }
+
+    QUrl apiUrl("https://img.scdn.io/api/v1.php");
     QUrlQuery query;
     query.addQueryItem("q", filename);
-    url.setQuery(query);
+    apiUrl.setQuery(query);
 
-    QNetworkRequest req(url);
+    QNetworkRequest req(apiUrl);
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Memories-Client/1.1.0");
+
     auto* reply = m_manager->get(req);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -139,10 +145,12 @@ void ImageInfoDialog::queryImage(const QString& imageUrl) {
             if (statusCode == 404) {
                 m_loadingLabel->setText(tr("未在元数据服务中找到该图片。"));
             } else if (statusCode == 429) {
-                m_loadingLabel->setText(tr("请求过于频繁，请稍后再试。"));
+                QString retryAfter = reply->rawHeader("Retry-After");
+                m_loadingLabel->setText(tr("请求过于频繁，请 %1 秒后再试。").arg(retryAfter.isEmpty() ? "60" : retryAfter));
             } else {
                 m_loadingLabel->setText(tr("查询失败: ") + reply->errorString());
             }
+            m_loadingLabel->setVisible(true);
             return;
         }
 
@@ -154,7 +162,8 @@ void ImageInfoDialog::queryImage(const QString& imageUrl) {
             m_currentInfo = ImageInfo::fromScndioJson(data);
             displayInfo(m_currentInfo);
         } else {
-            m_loadingLabel->setText(obj["error"].toString(tr("未知错误")));
+            m_loadingLabel->setText(obj["message"].toString(obj["error"].toString(tr("未知错误"))));
+            m_loadingLabel->setVisible(true);
         }
     });
 }
