@@ -57,6 +57,7 @@ if(BUILD_GUI)
         src/ui/ImageInfoDialog.cpp
         src/ui/FlowLayout.cpp
         src/ui/AppleTitleBar.cpp
+        src/ui/MessageBox.cpp
     )
     list(APPEND SOURCES
         resources/resources.qrc

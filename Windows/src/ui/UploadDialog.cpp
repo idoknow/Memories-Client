@@ -164,6 +164,20 @@ void UploadDialog::setupUi() {
     connect(m_cancelBtn, &QPushButton::clicked, this, &UploadDialog::onCancelUpload);
     connect(m_clearCompletedBtn, &QPushButton::clicked, this, &UploadDialog::onClearCompleted);
     connect(m_clearAllBtn, &QPushButton::clicked, this, &UploadDialog::onClearAll);
+
+    // Sync upload settings to Settings
+    connect(m_storageDestCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        Application::instance()->settings()->setDefaultStorageDest(text);
+        Application::instance()->settings()->save();
+    });
+    connect(m_outputFormatCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        Application::instance()->settings()->setDefaultOutputFormat(text);
+        Application::instance()->settings()->save();
+    });
+    connect(m_cdnDomainCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        Application::instance()->settings()->setDefaultCdnDomain(text);
+        Application::instance()->settings()->save();
+    });
 }
 
 void UploadDialog::addFiles(const QStringList& filePaths) {

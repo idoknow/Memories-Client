@@ -115,19 +115,56 @@ void SettingsDialog::setupUi() {
     fontSizeHLayout->setSpacing(4);
 
     auto* minusBtn = new QPushButton("−");
-    minusBtn->setFixedSize(32, 32);
-    minusBtn->setStyleSheet("QPushButton { font-size: 18px; font-weight: 700; border-radius: 8px; }");
-    connect(minusBtn, &QPushButton::clicked, this, [this]() {
-        int v = m_fontSizeSpin->value();
-        if (v > m_fontSizeSpin->minimum()) m_fontSizeSpin->setValue(v - 1);
-    });
+    minusBtn->setFixedSize(36, 36);
 
     auto* plusBtn = new QPushButton("+");
-    plusBtn->setFixedSize(32, 32);
-    plusBtn->setStyleSheet("QPushButton { font-size: 18px; font-weight: 700; border-radius: 8px; }");
-    connect(plusBtn, &QPushButton::clicked, this, [this]() {
+    plusBtn->setFixedSize(36, 36);
+
+    QString btnStyle = R"(
+        QPushButton {
+            font-size: 20px;
+            font-weight: 800;
+            border-radius: 10px;
+            border: 2px solid #cbd5e1;
+            background: #ffffff;
+            color: #475569;
+        }
+        QPushButton:hover {
+            border-color: #1D6E5A;
+            color: #1D6E5A;
+            background: #ecfdf5;
+        }
+        QPushButton:pressed {
+            background: #1D6E5A;
+            color: #ffffff;
+            border-color: #1D6E5A;
+        }
+        QPushButton:disabled {
+            border-color: #e2e8f0;
+            color: #94a3b8;
+            background: #f8fafc;
+        }
+    )";
+
+    minusBtn->setStyleSheet(btnStyle);
+    plusBtn->setStyleSheet(btnStyle);
+
+    connect(minusBtn, &QPushButton::clicked, this, [this, minusBtn, plusBtn]() {
         int v = m_fontSizeSpin->value();
-        if (v < m_fontSizeSpin->maximum()) m_fontSizeSpin->setValue(v + 1);
+        if (v > m_fontSizeSpin->minimum()) {
+            m_fontSizeSpin->setValue(v - 1);
+        }
+        minusBtn->setEnabled(v > m_fontSizeSpin->minimum() + 1);
+        plusBtn->setEnabled(true);
+    });
+
+    connect(plusBtn, &QPushButton::clicked, this, [this, minusBtn, plusBtn]() {
+        int v = m_fontSizeSpin->value();
+        if (v < m_fontSizeSpin->maximum()) {
+            m_fontSizeSpin->setValue(v + 1);
+        }
+        plusBtn->setEnabled(v < m_fontSizeSpin->maximum() - 1);
+        minusBtn->setEnabled(true);
     });
 
     m_fontSizeSpin->setRange(8, 24);
