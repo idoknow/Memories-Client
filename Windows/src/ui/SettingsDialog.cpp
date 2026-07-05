@@ -15,13 +15,10 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QComboBox>
-#include <QSpinBox>
-#include <QFontComboBox>
 #include <QCheckBox>
 #include <QLabel>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QFont>
 #include <QApplication>
 
 SettingsDialog::SettingsDialog(QWidget* parent)
@@ -31,8 +28,6 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     , m_cacheSizeLabel(new QLabel(this))
     , m_clearCacheBtn(new QPushButton(tr("清除缓存"), this))
     , m_themeCombo(new QComboBox(this))
-    , m_fontSizeSpin(new QSpinBox(this))
-    , m_fontCombo(new QFontComboBox(this))
     , m_storageDestCombo(new QComboBox(this))
     , m_outputFormatCombo(new QComboBox(this))
     , m_cdnDomainCombo(new QComboBox(this))
@@ -108,47 +103,6 @@ void SettingsDialog::setupUi() {
     themeLabel->setStyleSheet("font-weight: 600; color: #0f172a; font-size: 13px;");
     appearanceLayout->addRow(themeLabel, m_themeCombo);
 
-    // Font size: - button | value | + button
-    auto* fontSizeWidget = new QWidget();
-    auto* fontSizeHLayout = new QHBoxLayout(fontSizeWidget);
-    fontSizeHLayout->setContentsMargins(0,0,0,0);
-    fontSizeHLayout->setSpacing(4);
-
-    auto* minusBtn = new QPushButton("−");
-    minusBtn->setFixedSize(32, 32);
-    minusBtn->setStyleSheet("QPushButton { font-size: 18px; font-weight: 700; border-radius: 8px; }");
-    connect(minusBtn, &QPushButton::clicked, this, [this]() {
-        int v = m_fontSizeSpin->value();
-        if (v > m_fontSizeSpin->minimum()) m_fontSizeSpin->setValue(v - 1);
-    });
-
-    auto* plusBtn = new QPushButton("+");
-    plusBtn->setFixedSize(32, 32);
-    plusBtn->setStyleSheet("QPushButton { font-size: 18px; font-weight: 700; border-radius: 8px; }");
-    connect(plusBtn, &QPushButton::clicked, this, [this]() {
-        int v = m_fontSizeSpin->value();
-        if (v < m_fontSizeSpin->maximum()) m_fontSizeSpin->setValue(v + 1);
-    });
-
-    m_fontSizeSpin->setRange(8, 24);
-    m_fontSizeSpin->setSuffix(" pt");
-    m_fontSizeSpin->setAlignment(Qt::AlignCenter);
-    m_fontSizeSpin->setButtonSymbols(QSpinBox::NoButtons);
-    m_fontSizeSpin->setFixedWidth(70);
-
-    fontSizeHLayout->addWidget(minusBtn);
-    fontSizeHLayout->addWidget(m_fontSizeSpin);
-    fontSizeHLayout->addWidget(plusBtn);
-    fontSizeHLayout->addStretch();
-
-    auto* fontSizeLabel = new QLabel(tr("🔤 字号"));
-    fontSizeLabel->setStyleSheet("font-weight: 600; color: #0f172a; font-size: 13px;");
-    appearanceLayout->addRow(fontSizeLabel, fontSizeWidget);
-
-    auto* fontLabel = new QLabel(tr("📝 字体"));
-    fontLabel->setStyleSheet("font-weight: 600; color: #0f172a; font-size: 13px;");
-    appearanceLayout->addRow(fontLabel, m_fontCombo);
-
     tabs->addTab(appearanceTab, tr("外观"));
 
     // ---- Upload Tab ----
@@ -185,10 +139,6 @@ void SettingsDialog::setupUi() {
     connect(m_resetBtn, &QPushButton::clicked, this, &SettingsDialog::onReset);
     connect(m_themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &SettingsDialog::onThemeChanged);
-    connect(m_fontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &SettingsDialog::onFontSizeChanged);
-    connect(m_fontCombo, &QFontComboBox::currentFontChanged,
-            this, &SettingsDialog::onFontFamilyChanged);
 }
 
 void SettingsDialog::loadSettings() {
@@ -206,16 +156,6 @@ void SettingsDialog::loadSettings() {
     int themeIdx = m_themeCombo->findData(theme);
     if (themeIdx >= 0) m_themeCombo->setCurrentIndex(themeIdx);
 
-    // Font presets
-    QStringList fonts = ThemeManager::fontPresets();
-    m_fontCombo->clear();
-    for (const auto& key : fonts) {
-        m_fontCombo->addItem(ThemeManager::fontPresetDisplayName(key), key);
-    }
-
-    m_fontSizeSpin->setValue(s->fontSize());
-    m_fontCombo->setCurrentFont(QFont(s->fontFamily()));
-
     m_storageDestCombo->setCurrentText(s->defaultStorageDest());
     m_outputFormatCombo->setCurrentText(s->defaultOutputFormat());
     m_cdnDomainCombo->setCurrentText(s->defaultCdnDomain());
@@ -226,8 +166,6 @@ void SettingsDialog::saveSettings() {
 
     s->setDownloadLocation(m_downloadLocationEdit->text());
     s->setTheme(m_themeCombo->currentData().toString());
-    s->setFontSize(m_fontSizeSpin->value());
-    s->setFontFamily(m_fontCombo->currentFont().family());
     s->setDefaultStorageDest(m_storageDestCombo->currentText());
     s->setDefaultOutputFormat(m_outputFormatCombo->currentText());
     s->setDefaultCdnDomain(m_cdnDomainCombo->currentText());
@@ -261,9 +199,6 @@ void SettingsDialog::onThemeChanged(int index) {
     bool isDark = (theme == "dark");
     qApp->setStyleSheet(ThemeManager::instance().buildStylesheet(isDark));
 }
-void SettingsDialog::onFontSizeChanged(int) { /* Preview */ }
-void SettingsDialog::onFontFamilyChanged(const QFont&) { /* Preview */ }
-
 void SettingsDialog::onApply() {
     saveSettings();
     QMessageBox::information(this, tr("设置"), tr("设置已保存。"));

@@ -2,8 +2,6 @@
 #include <QDialog>
 
 class QComboBox;
-class QSpinBox;
-class QFontComboBox;
 class QCheckBox;
 class QLineEdit;
 class QPushButton;
@@ -19,8 +17,6 @@ private slots:
     void onBrowseDownloadLocation();
     void onClearCache();
     void onThemeChanged(int index);
-    void onFontSizeChanged(int value);
-    void onFontFamilyChanged(const QFont& font);
     void onApply();
     void onReset();
 
@@ -38,9 +34,7 @@ private:
     QPushButton* m_clearCacheBtn;
 
     // Appearance
-    QComboBox* m_themeCombo;        // light, dark, system
-    QSpinBox* m_fontSizeSpin;
-    QFontComboBox* m_fontCombo;
+    QComboBox* m_themeCombo;
 
     // Upload defaults
     QComboBox* m_storageDestCombo;

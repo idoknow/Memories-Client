@@ -31,6 +31,7 @@
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QTimer>
+#include <windows.h>
 
 namespace {
 constexpr double kMinPreviewScale = 0.05;
@@ -108,92 +109,86 @@ void ImageViewer::setupUi() {
 }
 
 void ImageViewer::setupToolBar() {
-    m_toolBar->setIconSize(QSize(20, 20));
+    m_toolBar->setIconSize(QSize(22, 22));
     m_toolBar->setMovable(false);
+    m_toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
 
-    // Back
-    m_backAction = m_toolBar->addAction(
-        style()->standardIcon(QStyle::SP_ArrowBack), tr("返回"));
+    m_backAction = m_toolBar->addAction(QIcon(":/icons/ic_back.svg"), tr("返回"));
     m_backAction->setToolTip(tr("返回图片广场 (Esc)"));
     connect(m_backAction, &QAction::triggered, this, &ImageViewer::backToGallery);
 
-    // Prev / Next
-    m_prevAction = m_toolBar->addAction(tr("◀ 上一张"));
+    m_prevAction = m_toolBar->addAction(QIcon(":/icons/ic_prev.svg"), tr("上一张"));
     m_prevAction->setToolTip(tr("上一张 (←)"));
     connect(m_prevAction, &QAction::triggered, this, &ImageViewer::goToPrevious);
 
-    m_nextAction = m_toolBar->addAction(tr("下一张 ▶"));
+    m_nextAction = m_toolBar->addAction(QIcon(":/icons/ic_next.svg"), tr("下一张"));
     m_nextAction->setToolTip(tr("下一张 (→)"));
     connect(m_nextAction, &QAction::triggered, this, &ImageViewer::goToNext);
 
     m_toolBar->addSeparator();
 
-    // Zoom
-    m_zoomInAction = m_toolBar->addAction(
-        style()->standardIcon(QStyle::SP_FileDialogContentsView), tr("放大"));
+    m_zoomInAction = m_toolBar->addAction(QIcon(":/icons/ic_zoom_in.svg"), tr("放大"));
     m_zoomInAction->setToolTip(tr("放大 (Ctrl++)"));
     connect(m_zoomInAction, &QAction::triggered, this, &ImageViewer::zoomIn);
 
-    m_zoomOutAction = m_toolBar->addAction(
-        style()->standardIcon(QStyle::SP_FileDialogListView), tr("缩小"));
+    m_zoomOutAction = m_toolBar->addAction(QIcon(":/icons/ic_zoom_out.svg"), tr("缩小"));
     m_zoomOutAction->setToolTip(tr("缩小 (Ctrl+-)"));
     connect(m_zoomOutAction, &QAction::triggered, this, &ImageViewer::zoomOut);
 
-    m_zoomResetAction = m_toolBar->addAction(tr("原始大小"));
+    m_zoomResetAction = m_toolBar->addAction(QIcon(":/icons/ic_reset.svg"), tr("原始"));
     m_zoomResetAction->setToolTip(tr("重置缩放 (Ctrl+0)"));
     connect(m_zoomResetAction, &QAction::triggered, this, &ImageViewer::zoomReset);
 
     m_toolBar->addSeparator();
 
-    // Rotate
-    m_rotateCwAction = m_toolBar->addAction(tr("↻ 右旋"));
+    m_rotateCwAction = m_toolBar->addAction(QIcon(":/icons/ic_rotate_cw.svg"), tr("右旋"));
     m_rotateCwAction->setToolTip(tr("顺时针旋转 90°"));
     connect(m_rotateCwAction, &QAction::triggered, this, &ImageViewer::rotateClockwise);
 
-    m_rotateCcwAction = m_toolBar->addAction(tr("↺ 左旋"));
+    m_rotateCcwAction = m_toolBar->addAction(QIcon(":/icons/ic_rotate_ccw.svg"), tr("左旋"));
     m_rotateCcwAction->setToolTip(tr("逆时针旋转 90°"));
     connect(m_rotateCcwAction, &QAction::triggered, this, &ImageViewer::rotateCounterClockwise);
 
     m_toolBar->addSeparator();
 
-    // Flip
-    m_flipHAction = m_toolBar->addAction(tr("↔ 水平翻转"));
+    m_flipHAction = m_toolBar->addAction(QIcon(":/icons/ic_flip_h.svg"), tr("水平翻转"));
     m_flipHAction->setToolTip(tr("左右镜像翻转"));
     connect(m_flipHAction, &QAction::triggered, this, &ImageViewer::flipHorizontal);
 
-    m_flipVAction = m_toolBar->addAction(tr("↕ 垂直翻转"));
+    m_flipVAction = m_toolBar->addAction(QIcon(":/icons/ic_flip_v.svg"), tr("垂直翻转"));
     m_flipVAction->setToolTip(tr("上下镜像翻转"));
     connect(m_flipVAction, &QAction::triggered, this, &ImageViewer::flipVertical);
 
     m_toolBar->addSeparator();
 
-    // Reset
-    m_resetAction = m_toolBar->addAction(
-        style()->standardIcon(QStyle::SP_BrowserReload), tr("还原"));
+    m_resetAction = m_toolBar->addAction(QIcon(":/icons/ic_reset.svg"), tr("还原"));
+    m_resetAction->setToolTip(tr("还原所有变换"));
     connect(m_resetAction, &QAction::triggered, this, &ImageViewer::resetTransforms);
 
     m_toolBar->addSeparator();
 
-    // Actions
-    m_copyUrlAction = m_toolBar->addAction(tr("📋 复制链接"));
+    m_copyUrlAction = m_toolBar->addAction(QIcon(":/icons/ic_copy_link.svg"), tr("复制链接"));
+    m_copyUrlAction->setToolTip(tr("复制图片链接 (Ctrl+C)"));
     connect(m_copyUrlAction, &QAction::triggered, this, &ImageViewer::copyUrl);
 
-    m_downloadAction = m_toolBar->addAction(
-        style()->standardIcon(QStyle::SP_DialogSaveButton), tr("下载"));
+    m_downloadAction = m_toolBar->addAction(QIcon(":/icons/ic_download.svg"), tr("下载"));
+    m_downloadAction->setToolTip(tr("下载图片"));
     connect(m_downloadAction, &QAction::triggered, this, &ImageViewer::downloadImage);
 
-    m_shareAction = m_toolBar->addAction(tr("分享"));
+    m_shareAction = m_toolBar->addAction(QIcon(":/icons/ic_share.svg"), tr("分享"));
+    m_shareAction->setToolTip(tr("分享图片"));
     connect(m_shareAction, &QAction::triggered, this, &ImageViewer::shareImage);
 
-    m_wallpaperAction = m_toolBar->addAction(tr("🖼 设为壁纸"));
+    m_wallpaperAction = m_toolBar->addAction(QIcon(":/icons/ic_wallpaper.svg"), tr("设为壁纸"));
+    m_wallpaperAction->setToolTip(tr("设为桌面壁纸"));
     connect(m_wallpaperAction, &QAction::triggered, this, &ImageViewer::setAsWallpaper);
 
-    m_printAction = m_toolBar->addAction(
-        style()->standardIcon(QStyle::SP_FileIcon), tr("打印"));
+    m_printAction = m_toolBar->addAction(QIcon(":/icons/ic_print.svg"), tr("打印"));
+    m_printAction->setToolTip(tr("打印图片"));
     connect(m_printAction, &QAction::triggered, this, &ImageViewer::printImage);
 
-    m_infoAction = m_toolBar->addAction(
-        style()->standardIcon(QStyle::SP_MessageBoxInformation), tr("信息"));
+    m_infoAction = m_toolBar->addAction(QIcon(":/icons/ic_info.svg"), tr("信息"));
+    m_infoAction->setToolTip(tr("显示图片信息"));
     connect(m_infoAction, &QAction::triggered, this, &ImageViewer::showImageInfo);
 }
 
@@ -332,15 +327,34 @@ void ImageViewer::copyUrl() {
 
 void ImageViewer::downloadImage() {
     if (m_currentUrl.isEmpty()) return;
+
     QString defaultName = m_currentUrl.section('/', -1);
-    QString filePath = QFileDialog::getSaveFileName(this, tr("保存图片"),
-        Application::instance()->settings()->downloadLocation() + "/" + defaultName,
-        tr("图片 (*.png *.jpg *.jpeg *.webp *.gif *.bmp)"));
-    if (filePath.isEmpty()) return;
+    QString downloadDir = Application::instance()->settings()->downloadLocation();
+
+    QDir dir(downloadDir);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+
+    QString filePath = downloadDir + "/" + defaultName;
+    int counter = 1;
+    while (QFile::exists(filePath)) {
+        QString baseName = defaultName.section('.', 0, -2);
+        QString extension = defaultName.section('.', -1);
+        filePath = downloadDir + "/" + baseName + "_" + QString::number(counter) + "." + extension;
+        counter++;
+    }
 
     auto pixmap = transformedPixmap();
-    pixmap.save(filePath);
-    LOG_INFO("Saved image to: " + filePath);
+    if (pixmap.save(filePath)) {
+        LOG_INFO("Saved image to: " + filePath);
+        QMessageBox::information(this, tr("下载完成"),
+            tr("图片已保存到:\n%1").arg(filePath));
+    } else {
+        LOG_ERROR("Failed to save image to: " + filePath);
+        QMessageBox::warning(this, tr("下载失败"),
+            tr("无法保存图片，请检查下载位置权限。"));
+    }
 }
 
 void ImageViewer::shareImage() {
@@ -351,14 +365,14 @@ void ImageViewer::shareImage() {
 void ImageViewer::setAsWallpaper() {
     if (m_currentUrl.isEmpty()) return;
 
-    // Save to temp file
     QString tmpPath = QDir::tempPath() + "/memories_wallpaper.png";
     auto pixmap = transformedPixmap();
     pixmap.save(tmpPath);
 
-    // Set wallpaper via platform-specific commands
-#ifdef Q_OS_LINUX
-    // Try various desktop environments
+#ifdef Q_OS_WINDOWS
+    const wchar_t* widePath = reinterpret_cast<const wchar_t*>(tmpPath.utf16());
+    SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, (LPVOID)widePath, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+#else
     QStringList cmds = {
         "gsettings set org.gnome.desktop.background picture-uri file://" + tmpPath,
         "gsettings set org.gnome.desktop.background picture-uri-dark file://" + tmpPath,
