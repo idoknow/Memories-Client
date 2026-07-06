@@ -7,10 +7,13 @@ Android/app/src/main/assets/app-config.properties
 *.aab
 Android/memories-release.jks
 /Android/memories-release.jks
+node_modules/
 Linux/build/
 Linux/build-gcc14/
 Linux/build-release/
 dist/
+admin/dist/
+web/dist/
 *.tar.gz
 build/
 Windows/build/

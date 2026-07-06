@@ -10,9 +10,9 @@ Memories 是一款专为校园场景打造的跨平台客户端，支持 Android
 
 ## 项目结构
 
-```
+```text
 Memories-Client/
-├── web/          # 官网（React + Vite + Tailwind CSS）
+├── web/          # Web 前台（React + Vite + Tailwind CSS）
 ├── Android/      # Android 原生客户端（Java）
 ├── iOS/          # iOS 客户端
 ├── macOS/        # macOS 客户端
@@ -22,7 +22,33 @@ Memories-Client/
 └── LICENSE       # GPL v3
 ```
 
-## 官网
+## 快速开始
+
+按需进入对应平台目录构建。首次克隆后建议先准备各端的本地配置文件，再执行构建命令；真实配置、依赖缓存和构建产物不应提交到仓库。
+
+| 模块 | 入口 | 常用命令 |
+| ------ | ------ | ---------- |
+| Web 前台 | `web/` | `pnpm install`、`pnpm dev`、`pnpm build` |
+| 管理后台 | `admin/` | `npm install`、`npm run dev`、`npm run build` |
+| Android | `Android/` | `./gradlew :app:assembleDebug` |
+| Linux | `Linux/` | `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release` |
+| Windows | `Windows/` | 见 `Windows/README.md` |
+
+## 本地配置
+
+- Android：复制 `Android/app-config.example.properties` 到 `Android/app/src/main/assets/app-config.properties`，填写 API、OAuth、学校和主题配置。
+- Linux/Windows：按平台 README 安装 Qt、CMake 和编译器后构建。
+- Web/admin：依赖目录 `node_modules/` 和构建目录 `dist/` 只保留在本机。
+
+## 清理构建产物
+
+以下目录是可再生成产物，已在 `.gitignore` 中忽略，可按需删除后重新构建：
+
+```bash
+rm -rf build Android/.gradle Android/build Android/app/build Linux/build Linux/build-gcc14 Linux/build-release web/dist admin/dist
+```
+
+## Web 前台
 
 基于 React 18 + Vite + Tailwind CSS + shadcn/ui 构建。
 
@@ -46,6 +72,11 @@ cp app-config.example.properties app/src/main/assets/app-config.properties
 
 详细说明见 [Android/README.md](Android/README.md)。
 
+## 桌面客户端
+
+- Linux 客户端使用 C++20、Qt 6 和 CMake 构建，详细说明见 [Linux/README.md](Linux/README.md)。
+- Windows 客户端使用 C++20、Qt 6 和 CMake 构建，详细说明见 [Windows/README.md](Windows/README.md)。
+
 ## 主要功能
 
 - 📷 **校园广场** — 浏览全校师生的照片记忆
@@ -58,7 +89,7 @@ cp app-config.example.properties app/src/main/assets/app-config.properties
 ## 技术栈
 
 | 模块 | 技术 |
-|------|------|
+| ------ | ------ |
 | 官网 | React 18, Vite, Tailwind CSS, shadcn/ui, Framer Motion |
 | Android | Java, Android SDK, Gradle |
 | 多语言 | 简体中文 / 繁體中文 / English / 日本語 |
