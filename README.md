@@ -2,7 +2,12 @@
 
 > 校园记忆胶片杂志 — 每一张照片，都是青春的底片。
 
-Memories 是一款专为校园场景打造的跨平台客户端，支持 Android、iOS、Windows、macOS 和 Linux。每所学校拥有独立的客户端包，数据隔离、安全可靠。
+> Memories 是一款专为校园场景打造的跨平台客户端，支持 Android、iOS、Windows、macOS 和 Linux。每所学校拥有独立的客户端包，数据隔离、安全可靠。
+
+> Memories 致力于为学校学生打造一个温暖、安全、智能的记忆分享平台，让青春的每一帧都被珍藏。
+
+校园时光是人生中最珍贵的记忆之一。我们相信，每一张照片都承载着独特的故事与情感。Memories 希望成为这些美好瞬间的守护者，让同学们能够轻松上传、浏览、分享校园生活中的点点滴滴，让记忆不再随时间流逝而褪色。
+
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -14,11 +19,11 @@ Memories 是一款专为校园场景打造的跨平台客户端，支持 Android
 Memories-Client/
 ├── web/          # Web 前台（React + Vite + Tailwind CSS）
 ├── Android/      # Android 原生客户端（Java）
-├── iOS/          # iOS 客户端
+├── iOS/          # iOS 客户端（React + Vite + Tailwind CSS）
 ├── macOS/        # macOS 客户端
-├── Windows/      # Windows 客户端
-├── Linux/        # Linux 客户端
-├── admin/        # 管理后台
+├── Windows/      # Windows 客户端(CMake + Qt 6 + C++)
+├── Linux/        # Linux 客户端(CMake + Qt 6 + C++)
+├── admin/        # 管理后台(React + Vite + Tailwind CSS)
 └── LICENSE       # GPL v3
 ```
 
@@ -34,6 +39,7 @@ Memories-Client/
 | iOS Web 客户端 | `iOS/` | `pnpm install`、`pnpm dev --host 127.0.0.1`、`pnpm build` |
 | Linux | `Linux/` | `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release` |
 | Windows | `Windows/` | 见 `Windows/README.md` |
+| Windows | `macOS/` | none |
 
 ## 本地配置
 
@@ -103,7 +109,7 @@ pnpm build
 - 🔗 **OAuth 登录** — 通过校园墙账号安全登录
 - 🎨 **主题定制** — 亮色 / 暗色主题自由切换
 - 📦 **一校一包** — 每所学校独立客户端，数据完全隔离
-- 🌐 **跨平台** — Android / iOS / Windows / macOS / Linux 全覆盖
+- 🌐 **跨平台** — Android / iOS / Windows / macOS / Linux /Web 全覆盖
 
 ## 技术栈
 
@@ -111,6 +117,11 @@ pnpm build
 | ------ | ------ |
 | 官网 | React 18, Vite, Tailwind CSS, shadcn/ui, Framer Motion |
 | Android | Java, Android SDK, Gradle |
+| iOS | React 18, Vite, TypeScript, shadcn/ui, Framer Motion |
+| Windows | C++20, Qt 6, CMake |
+| Linux | C++20, Qt 6, CMake |
+| macOS |  |
+| 后台 | React 18, Vite, Tailwind CSS, shadcn/ui, Framer Motion |
 | 多语言 | 简体中文 / 繁體中文 / English / 日本語 |
 
 ## 开源协议
