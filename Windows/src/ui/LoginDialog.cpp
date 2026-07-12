@@ -45,8 +45,8 @@ LoginDialog::~LoginDialog() {
 void LoginDialog::setupUi() {
     setWindowTitle(tr("校园墙 OAuth 登录"));
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-    resize(440, 460);
-    setMinimumSize(400, 380);
+    resize(460, 520);
+    setMinimumSize(420, 440);
 
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0,0,0,0);
@@ -57,45 +57,77 @@ void LoginDialog::setupUi() {
     outerLayout->addWidget(titleBar);
 
     auto* mainLayout = new QVBoxLayout();
-    mainLayout->setSpacing(12);
-    mainLayout->setContentsMargins(28, 20, 28, 24);
+    mainLayout->setSpacing(14);
+    mainLayout->setContentsMargins(32, 24, 32, 28);
     outerLayout->addLayout(mainLayout);
+
+    // Brand header
+    auto* brandLayout = new QHBoxLayout();
+    brandLayout->setSpacing(12);
+    auto* brandIcon = new QLabel();
+    brandIcon->setFixedSize(40, 40);
+    brandIcon->setScaledContents(true);
+    brandIcon->setPixmap(QIcon(":/icons/app.svg").pixmap(40, 40));
+    brandIcon->setStyleSheet("background: transparent; border: none;");
+    brandLayout->addWidget(brandIcon);
+    auto* brandText = new QLabel(tr("Memories"));
+    brandText->setStyleSheet("font-size: 22px; font-weight: 800; color: #1e293b; letter-spacing: -0.5px; background: transparent; border: none;");
+    brandLayout->addWidget(brandText);
+    brandLayout->addStretch();
+    mainLayout->addLayout(brandLayout);
+
+    // Subtitle
+    auto* subtitle = new QLabel(tr("登录以同步你的校园记忆"));
+    subtitle->setStyleSheet("font-size: 13px; color: #94a3b8; background: transparent; border: none; margin-bottom: 4px;");
+    mainLayout->addWidget(subtitle);
+    auto* subtitleSpacer = new QLabel();
+    subtitleSpacer->setFixedHeight(4);
+    subtitleSpacer->setStyleSheet("background: transparent; border: none;");
+    mainLayout->addWidget(subtitleSpacer);
 
     // User info section
     auto* infoGroup = new QGroupBox(tr("当前用户"));
     auto* infoLayout = new QVBoxLayout(infoGroup);
-    infoLayout->setSpacing(12);
+    infoLayout->setSpacing(14);
 
     // Avatar + name + QQ in one row
     auto* avatarRow = new QHBoxLayout();
     avatarRow->setSpacing(16);
 
-    // QQ avatar
+    // QQ avatar - improved styling with ring
     auto* avatarCircle = new QLabel();
-    avatarCircle->setFixedSize(56, 56);
+    avatarCircle->setFixedSize(64, 64);
     avatarCircle->setScaledContents(true);
     avatarCircle->setObjectName("userAvatar");
     avatarCircle->setStyleSheet(
-        "QLabel#userAvatar { background: #E2E8F0; border-radius: 28px; "
+        "QLabel#userAvatar { background: rgba(29,110,90,0.06); border-radius: 32px; "
         "border: 2px solid rgba(29,110,90,0.15); }");
     avatarRow->addWidget(avatarCircle);
 
     // Name + QQ column
     auto* nameCol = new QVBoxLayout();
-    nameCol->setSpacing(2);
-    m_userLabel->setStyleSheet("font-size: 17px; font-weight: 700; color: #0f172a;");
+    nameCol->setSpacing(3);
+    auto* nameLabel = new QLabel(tr("用户名"));
+    nameLabel->setStyleSheet("font-size: 11px; font-weight: 600; color: #94a3b8; background: transparent; border: none; text-transform: uppercase; letter-spacing: 0.5px;");
+    nameCol->addWidget(nameLabel);
+    m_userLabel->setStyleSheet("font-size: 18px; font-weight: 700; color: #0f172a; background: transparent; border: none;");
     nameCol->addWidget(m_userLabel);
-    m_qqLabel->setStyleSheet("font-size: 13px; color: #64748b;");
+    m_qqLabel->setStyleSheet("font-size: 13px; color: #64748b; background: transparent; border: none;");
     nameCol->addWidget(m_qqLabel);
     avatarRow->addLayout(nameCol, 1);
     infoLayout->addLayout(avatarRow);
 
-    // Tenant
+    // Tenant - improved styling
     auto* tenantRow = new QHBoxLayout();
+    tenantRow->setSpacing(8);
     auto* tenantIcon = new QLabel("🏫");
-    tenantIcon->setStyleSheet("font-size: 14px; background: transparent;");
+    tenantIcon->setStyleSheet("font-size: 16px; background: transparent; border: none;");
     tenantRow->addWidget(tenantIcon);
-    m_tenantLabel->setStyleSheet("font-size: 13px; color: #475569;");
+    auto* tenantLabel = new QLabel(tr("学校"));
+    tenantLabel->setStyleSheet("font-size: 11px; font-weight: 600; color: #94a3b8; background: transparent; border: none; text-transform: uppercase; letter-spacing: 0.5px;");
+    tenantRow->addWidget(tenantLabel);
+    tenantRow->addSpacing(4);
+    m_tenantLabel->setStyleSheet("font-size: 14px; font-weight: 500; color: #1e293b; background: transparent; border: none;");
     tenantRow->addWidget(m_tenantLabel, 1);
     infoLayout->addLayout(tenantRow);
 
@@ -104,38 +136,43 @@ void LoginDialog::setupUi() {
     // OAuth section
     auto* oauthGroup = new QGroupBox(tr("校园墙 OAuth"));
     auto* oauthLayout = new QVBoxLayout(oauthGroup);
-    oauthLayout->setSpacing(12);
+    oauthLayout->setSpacing(14);
 
     auto* oauthDesc = new QLabel(
         tr("使用校园墙账号授权登录。\n点击按钮后将打开浏览器进行授权。"));
     oauthDesc->setWordWrap(true);
-    oauthDesc->setStyleSheet("color: #64748b; font-size: 13px;");
+    oauthDesc->setStyleSheet("color: #64748b; font-size: 13px; line-height: 1.6; background: transparent; border: none;");
     oauthLayout->addWidget(oauthDesc);
 
-    m_loginBtn->setMinimumHeight(48);
+    // Primary login button - modern gradient style (与 QSS primaryBtn 应用键风格保持一致)
+    m_loginBtn->setMinimumHeight(52);
     m_loginBtn->setCursor(Qt::PointingHandCursor);
     m_loginBtn->setStyleSheet(
         "QPushButton { font-size: 15px; font-weight: 700; "
-        "background: #1D6E5A; color: white; border-radius: 12px; "
-        "border: none; padding: 0px 24px; }"
-        "QPushButton:hover { background: #175A48; }"
-        "QPushButton:pressed { background: #124A3A; }");
+        "background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5BA4DA, stop:1 #2E73B5); "
+        "color: white; border-radius: 12px; border: 1px solid rgba(46,115,181,0.40); padding: 0px 24px; }"
+        "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6BB3E5, stop:1 #3D82C7); border-color: rgba(46,115,181,0.60); }"
+        "QPushButton:pressed { background: #2E73B5; border-color: #225A8E; }"
+        "QPushButton:disabled { background: rgba(46,115,181,0.35); color: rgba(255,255,255,0.75); border-color: rgba(46,115,181,0.20); }");
     oauthLayout->addWidget(m_loginBtn);
 
-    m_logoutBtn->setMinimumHeight(40);
+    // Logout button - improved flat style
+    m_logoutBtn->setMinimumHeight(42);
     m_logoutBtn->setCursor(Qt::PointingHandCursor);
     m_logoutBtn->setStyleSheet(
-        "QPushButton { font-size: 13px; font-weight: 600; color: #EF4444; "
-        "background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.12); "
+        "QPushButton { font-size: 13px; font-weight: 600; color: #DC2626; "
+        "background: rgba(220,38,38,0.04); border: 1px solid rgba(220,38,38,0.12); "
         "border-radius: 10px; padding: 0px 24px; }"
-        "QPushButton:hover { background: rgba(239,68,68,0.12); }");
+        "QPushButton:hover { background: rgba(220,38,38,0.08); border-color: rgba(220,38,38,0.25); }"
+        "QPushButton:pressed { background: rgba(220,38,38,0.12); }");
     oauthLayout->addWidget(m_logoutBtn);
 
     mainLayout->addWidget(oauthGroup);
 
-    // Status
+    // Status - improved pill style
     m_statusLabel->setAlignment(Qt::AlignCenter);
     m_statusLabel->setWordWrap(true);
+    m_statusLabel->setStyleSheet("font-size: 12px; color: #94a3b8; font-weight: 500; background: transparent; border: none; padding: 4px 0;");
     mainLayout->addWidget(m_statusLabel);
 
     // Connections

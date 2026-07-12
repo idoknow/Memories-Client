@@ -34,5 +34,5 @@ private:
     QList<QLayoutItem*> m_items;
     int m_hSpace;
     int m_vSpace;
-    int m_cellSize = 180; // base cell size
+    int m_cellSize = 184; // base cell size
 };

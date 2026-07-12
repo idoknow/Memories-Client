@@ -53,8 +53,8 @@ MainWindow::~MainWindow() = default;
 void MainWindow::setupUi() {
     setWindowTitle("Memories");
     setWindowIcon(QIcon(":/icons/app.svg"));
-    resize(1280, 800);
-    setMinimumSize(800, 600);
+    resize(1360, 840);
+    setMinimumSize(840, 620);
 
     // Main container: title bar + content
     auto* mainContainer = new QWidget(this);
@@ -213,13 +213,16 @@ void MainWindow::setupToolBar(QToolBar* toolbar) {
     toolbar->addSeparator();
 
     // Avatar label
-    m_avatarLabel->setFixedSize(28, 28);
+    m_avatarLabel->setFixedSize(32, 32);
     m_avatarLabel->setAlignment(Qt::AlignCenter);
     m_avatarLabel->setStyleSheet(
-        "QLabel { background: #1D6E5A; color: white; border-radius: 14px; "
-        "font-weight: 700; font-size: 12px; min-width: 28px; min-height: 28px; }");
+        "QLabel { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+        "stop:0 #2A8E6E, stop:1 #1D6E5A); color: white; border-radius: 16px; "
+        "font-weight: 700; font-size: 13px; min-width: 32px; min-height: 32px; "
+        "border: 2px solid rgba(255,255,255,0.8); }");
     m_avatarLabel->setVisible(false);
     toolbar->addWidget(m_avatarLabel);
+    toolbar->addSeparator();
 
     auto* loginAction = toolbar->addAction(
         style()->standardIcon(QStyle::SP_ComputerIcon), tr("登录"));

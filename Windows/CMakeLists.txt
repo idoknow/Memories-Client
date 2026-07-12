@@ -219,6 +219,12 @@ if(WIN32 AND BUILD_GUI)
         OPTIONAL
     )
 
+    # 额外安装 qwebp.dll（Qt 6.8 MinGW 官方未自带，需自行从 qtimageformats 源码构建）
+    install(FILES  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/imageformats/qwebp.dll"
+        DESTINATION imageformats
+        OPTIONAL
+    )
+
     install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/iconengines/"
         DESTINATION iconengines
         OPTIONAL

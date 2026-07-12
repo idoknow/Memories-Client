@@ -9,14 +9,14 @@ AppleTitleBar::AppleTitleBar(QWidget* parentWindow, const QString& title, bool c
     , m_parentWindow(parentWindow)
     , m_canMaximize(canMaximize)
 {
-    setFixedHeight(40);
+    setFixedHeight(44);
     setCursor(Qt::ArrowCursor);
     setStyleSheet(
-        "QWidget { background: rgba(248,248,248,0.85); backdrop-filter: blur(16px); "
-        "border-bottom: 1px solid rgba(0,0,0,0.06); }");
+        "QWidget { background: rgba(248,250,252,0.75); "
+        "border-bottom: 1px solid rgba(0,0,0,0.04); }");
 
     auto* layout = new QHBoxLayout(this);
-    layout->setContentsMargins(10, 0, 10, 0);
+    layout->setContentsMargins(14, 0, 14, 0);
     layout->setSpacing(0);
 
     // ---- Left: traffic light buttons ----
@@ -30,40 +30,40 @@ AppleTitleBar::AppleTitleBar(QWidget* parentWindow, const QString& title, bool c
             "QPushButton { background: %1; border: none; border-radius: %2px; "
             "min-width: %3px; max-width: %3px; min-height: %3px; max-height: %3px; "
             "padding: 0px; font-size: %4px; color: transparent; font-weight: 700; }"
-            "QPushButton:hover { color: rgba(0,0,0,0.45); }")
+            "QPushButton:hover { color: rgba(0,0,0,0.5); }")
             .arg(bg).arg(size/2).arg(size).arg(size*2/5));
         btn->setText(hoverSymbol);
         return btn;
     };
 
-    m_closeBtn = makeTrafficBtn("#FF5F57", "✕", 14);
-    m_minBtn   = makeTrafficBtn("#FFBD2E", "−", 14);
-    m_maxBtn   = makeTrafficBtn("#28CA41", canMaximize ? "↗" : "+", 14);
+    m_closeBtn = makeTrafficBtn("#FF5F57", "✕", 15);
+    m_minBtn   = makeTrafficBtn("#FFBD2E", "−", 15);
+    m_maxBtn   = makeTrafficBtn("#28CA41", canMaximize ? "↗" : "+", 15);
 
     auto* trafficLayout = new QHBoxLayout();
-    trafficLayout->setSpacing(8);
+    trafficLayout->setSpacing(10);
     trafficLayout->addWidget(m_closeBtn);
     trafficLayout->addWidget(m_minBtn);
     trafficLayout->addWidget(m_maxBtn);
     layout->addLayout(trafficLayout);
 
     // ---- Center: icon + title ----
-    layout->addStretch();
+    layout->addStretch(1);
 
     m_iconLabel = new QLabel();
-    m_iconLabel->setFixedSize(18, 18);
+    m_iconLabel->setFixedSize(20, 20);
     m_iconLabel->setScaledContents(true);
     m_iconLabel->setStyleSheet("background: transparent; border: none;");
     layout->addWidget(m_iconLabel);
-    layout->addSpacing(6);
+    layout->addSpacing(7);
 
     m_titleLabel = new QLabel(title);
     m_titleLabel->setStyleSheet(
-        "font-size: 13px; font-weight: 600; color: #334155; "
-        "background: transparent; border: none;");
+        "font-size: 13px; font-weight: 600; color: #475569; "
+        "background: transparent; border: none; letter-spacing: 0.2px;");
     layout->addWidget(m_titleLabel);
 
-    layout->addStretch();
+    layout->addStretch(1);
 
     // ---- Connections ----
     connect(m_closeBtn, &QPushButton::clicked, this, [this]() {

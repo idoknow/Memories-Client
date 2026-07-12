@@ -25,3 +25,8 @@ Windows/install/
 aqtinstall.log
 Tools/
 .qt/
+
+# Qt imageformats build intermediates
+Windows/qtimageformats-src/
+Windows/qtimageformats.zip
+Windows/flowlayout_debug.txt
