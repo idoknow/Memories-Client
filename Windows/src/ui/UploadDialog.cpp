@@ -58,8 +58,8 @@ UploadDialog::UploadDialog(QWidget* parent)
 
 void UploadDialog::setupUi() {
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-    resize(640, 560);
-    setMinimumSize(520, 440);
+    resize(660, 580);
+    setMinimumSize(540, 460);
 
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
@@ -71,16 +71,24 @@ void UploadDialog::setupUi() {
 
     auto* mainLayout = new QVBoxLayout();
     mainLayout->setSpacing(16);
-    mainLayout->setContentsMargins(24, 16, 24, 24);
+    mainLayout->setContentsMargins(28, 18, 28, 28);
     outerLayout->addLayout(mainLayout);
+
+    // Header
+    auto* headerLabel = new QLabel(tr("📤 上传图片"));
+    headerLabel->setStyleSheet("font-size: 18px; font-weight: 700; color: #0f172a; background: transparent; border: none;");
+    mainLayout->addWidget(headerLabel);
 
     // File selection buttons at top
     auto* headerLayout = new QHBoxLayout();
+    headerLayout->setSpacing(10);
     headerLayout->addStretch();
     auto* addFileBtn = new QPushButton(tr("＋ 添加文件"));
     addFileBtn->setProperty("primaryBtn", true);
+    addFileBtn->setMinimumHeight(38);
     auto* addFolderBtn = new QPushButton(tr("📁 添加文件夹"));
     addFolderBtn->setProperty("flat", true);
+    addFolderBtn->setMinimumHeight(38);
     headerLayout->addWidget(addFileBtn);
     headerLayout->addWidget(addFolderBtn);
     mainLayout->addLayout(headerLayout);
@@ -125,10 +133,10 @@ void UploadDialog::setupUi() {
     // Queue label
     auto* queueHeader = new QHBoxLayout();
     auto* queueLabel = new QLabel(tr("上传队列"));
-    queueLabel->setStyleSheet("font-weight: 700; font-size: 14px; color: #0f172a;");
+    queueLabel->setStyleSheet("font-weight: 700; font-size: 14px; color: #1e293b; background: transparent; border: none;");
     queueHeader->addWidget(queueLabel);
     queueHeader->addStretch();
-    m_countLabel->setStyleSheet("color: #64748b; font-size: 12px;");
+    m_countLabel->setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 500; background: transparent; border: none;");
     queueHeader->addWidget(m_countLabel);
     mainLayout->addLayout(queueHeader);
 
@@ -136,24 +144,33 @@ void UploadDialog::setupUi() {
 
     // Progress
     m_overallProgress->setVisible(false);
-    m_overallProgress->setFixedHeight(8);
+    m_overallProgress->setFixedHeight(10);
     mainLayout->addWidget(m_overallProgress);
 
     // Status + buttons
     auto* bottomLayout = new QHBoxLayout();
-    m_statusLabel->setStyleSheet("color: #64748b; font-size: 12px;");
+    bottomLayout->setSpacing(10);
+    m_statusLabel->setStyleSheet("color: #94a3b8; font-size: 12px; background: transparent; border: none;");
     bottomLayout->addWidget(m_statusLabel);
     bottomLayout->addStretch();
     m_clearCompletedBtn->setProperty("flat", true);
+    m_clearCompletedBtn->setCursor(Qt::PointingHandCursor);
+    m_clearCompletedBtn->setMinimumHeight(36);
     m_clearAllBtn->setProperty("flat", true);
+    m_clearAllBtn->setCursor(Qt::PointingHandCursor);
+    m_clearAllBtn->setMinimumHeight(36);
     bottomLayout->addWidget(m_clearCompletedBtn);
     bottomLayout->addWidget(m_clearAllBtn);
     bottomLayout->addSpacing(8);
     m_cancelBtn->setProperty("flat", true);
+    m_cancelBtn->setCursor(Qt::PointingHandCursor);
+    m_cancelBtn->setMinimumHeight(36);
     m_cancelBtn->setEnabled(false);
     bottomLayout->addWidget(m_cancelBtn);
     m_startBtn->setProperty("primaryBtn", true);
+    m_startBtn->setCursor(Qt::PointingHandCursor);
     m_startBtn->setMinimumWidth(120);
+    m_startBtn->setMinimumHeight(38);
     bottomLayout->addWidget(m_startBtn);
     mainLayout->addLayout(bottomLayout);
 

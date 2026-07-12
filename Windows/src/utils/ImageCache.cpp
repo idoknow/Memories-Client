@@ -7,6 +7,10 @@
 #include <QSaveFile>
 #include <QDirIterator>
 #include <QStandardPaths>
+#include <QBuffer>
+#include <QImageReader>
+#include <QUrl>
+#include <QUrlQuery>
 
 ImageCache::ImageCache(QObject* parent)
     : QObject(parent)
@@ -57,6 +61,15 @@ QPixmap ImageCache::getPixmap(const QString& key) {
     QString path = toLocalPath(key);
     if (QFileInfo::exists(path)) {
         QPixmap pix(path);
+        if (pix.isNull()) {
+            // 兼容旧缓存：按扩展名加载失败时，回退用 QImageReader 内容嗅探
+            QImageReader reader(path);
+            reader.setDecideFormatFromContent(true);
+            QImage img = reader.read();
+            if (!img.isNull()) {
+                pix = QPixmap::fromImage(img);
+            }
+        }
         if (!pix.isNull()) {
             QFile file(path);
             file.setFileTime(QDateTime::currentDateTime(), QFileDevice::FileModificationTime);
@@ -100,6 +113,7 @@ bool ImageCache::putData(const QString& key, const QByteArray& data, QPixmap* de
     QFileInfo fi(path);
     QDir().mkpath(fi.absolutePath());
 
+    // 保存原始字节（Qt 已能识别 webp/jpeg/png 等格式），不强制再编码为 PNG
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
         return false;
@@ -191,4 +205,36 @@ QString ImageCache::toLocalPath(const QString& key) const {
     QByteArray hash = QCryptographicHash::hash(
         key.toUtf8(), QCryptographicHash::Sha256).toHex().left(16);
     return m_cacheDir.absoluteFilePath(hash + ".png");
+}
+
+QString ImageCache::convertibleUrl(const QString& url) {
+    // 检查 URL 是否指向 webp 格式
+    QString lowerUrl = url.toLower();
+    bool isWebp = lowerUrl.endsWith(".webp") ||
+                  QUrl(url).query().toLower().contains("format=webp");
+
+    if (!isWebp) {
+        // 非 webp 不需要转换
+        return url;
+    }
+
+    QUrl u(url);
+    QUrlQuery q(u);
+
+    // 如果原 URL 路径以 .webp 结尾，去掉 .webp 后缀（保留原文件名 stem）
+    QString path = u.path();
+    if (path.toLower().endsWith(".webp")) {
+        path.chop(5); // 移除 ".webp"
+        u.setPath(path);
+    }
+
+    // 移除可能存在的原有 format/f 参数
+    q.removeQueryItem("format");
+    q.removeQueryItem("f");
+
+    // 请求服务器以 jpeg 格式返回（多数 CDN 如 Cloudflare Images、img.scdn.io 支持）
+    q.addQueryItem("format", "jpg");
+
+    u.setQuery(q);
+    return u.toString();
 }

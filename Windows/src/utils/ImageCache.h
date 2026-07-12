@@ -34,6 +34,9 @@ public:
     qint64 totalDiskUsage() const;
     void pruneDiskCache(qint64 maxBytes);
 
+    // 将图片 URL 转换为 Qt 可解码的格式（webp → jpg）
+    static QString convertibleUrl(const QString& url);
+
 signals:
     void cacheCleared();
 

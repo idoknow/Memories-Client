@@ -17,6 +17,8 @@
         <file alias="ic_print.svg">icons/ic_print.svg</file>
         <file alias="ic_info.svg">icons/ic_info.svg</file>
         <file alias="ic_copy_link.svg">icons/ic_copy_link.svg</file>
+        <file alias="down-arrow.svg">icons/down-arrow.svg</file>
+        <file alias="down-arrow-dark.svg">icons/down-arrow-dark.svg</file>
     </qresource>
     <qresource prefix="/style">
         <file alias="main.qss">style.qss</file>

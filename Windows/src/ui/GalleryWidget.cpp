@@ -65,7 +65,7 @@ void GalleryWidget::setupUi() {
 
     // Batch toolbar
     auto* batchBar = new QHBoxLayout();
-    batchBar->setContentsMargins(18, 12, 18, 10);
+    batchBar->setContentsMargins(20, 14, 20, 12);
     batchBar->setSpacing(10);
     batchBar->addWidget(m_selectModeBtn);
 
@@ -108,9 +108,9 @@ void GalleryWidget::setupUi() {
     mainLayout->addLayout(batchBar);
 
     // Grid
-    m_flowLayout->setContentsMargins(18, 14, 18, 18);
-    m_flowLayout->setSpacing(10);
-    m_gridContainer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    m_flowLayout->setContentsMargins(20, 16, 20, 20);
+    m_flowLayout->setSpacing(12);
+    m_gridContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     m_scrollArea->setWidget(m_gridContainer);
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -233,12 +233,14 @@ void GalleryWidget::onFetchError(const QString& error) {
 void GalleryWidget::addThumbnail(const ImageInfo& info) {
     // Thumbnail button directly in flow layout
     auto* thumbBtn = new QToolButton();
-    thumbBtn->setFixedSize(180, 180);
-    thumbBtn->setIconSize(QSize(172, 172));
+    thumbBtn->setFixedSize(184, 184);
+    thumbBtn->setIconSize(QSize(176, 176));
     thumbBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     thumbBtn->setCursor(Qt::PointingHandCursor);
     thumbBtn->setProperty("galleryThumb", true);
     thumbBtn->setProperty("selected", false);
+    // 缩略图边距（图标比按钮小一圈）
+    thumbBtn->setProperty("iconMargin", 4);
 
     // We'll set span after checking aspect ratio
     thumbBtn->setProperty("span", 1);
@@ -292,16 +294,16 @@ void GalleryWidget::addThumbnail(const ImageInfo& info) {
 }
 
 void GalleryWidget::applyThumbnailPixmap(QToolButton* thumbBtn, const QPixmap& pixmap) {
-    thumbBtn->setIcon(QIcon(pixmap.scaled(172, 172, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+    thumbBtn->setIcon(QIcon(pixmap.scaled(176, 176, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
 
     double ar = static_cast<double>(pixmap.width()) / pixmap.height();
     if (ar > 1.5) {
-        thumbBtn->setFixedSize(368, 180);
-        thumbBtn->setIconSize(QSize(360, 172));
+        thumbBtn->setFixedSize(376, 184);
+        thumbBtn->setIconSize(QSize(368, 176));
         thumbBtn->setProperty("span", 2);
     } else if (ar < 0.67) {
-        thumbBtn->setFixedSize(180, 368);
-        thumbBtn->setIconSize(QSize(172, 360));
+        thumbBtn->setFixedSize(184, 376);
+        thumbBtn->setIconSize(QSize(176, 368));
         thumbBtn->setProperty("span", 1);
     }
 }

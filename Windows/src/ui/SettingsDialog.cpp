@@ -41,8 +41,8 @@ SettingsDialog::SettingsDialog(QWidget* parent)
 void SettingsDialog::setupUi() {
     setWindowTitle(tr("设置"));
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-    resize(500, 550);
-    setMinimumSize(450, 400);
+    resize(520, 580);
+    setMinimumSize(470, 440);
 
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0,0,0,0);
@@ -52,8 +52,14 @@ void SettingsDialog::setupUi() {
     outerLayout->addWidget(titleBar);
 
     auto* mainLayout = new QVBoxLayout();
-    mainLayout->setContentsMargins(24, 16, 24, 24);
+    mainLayout->setContentsMargins(28, 18, 28, 28);
+    mainLayout->setSpacing(16);
     outerLayout->addLayout(mainLayout);
+
+    // Header
+    auto* headerLabel = new QLabel(tr("⚙️ 偏好设置"));
+    headerLabel->setStyleSheet("font-size: 18px; font-weight: 700; color: #0f172a; background: transparent; border: none;");
+    mainLayout->addWidget(headerLabel);
 
     auto* tabs = new QTabWidget(this);
 
@@ -100,7 +106,7 @@ void SettingsDialog::setupUi() {
     m_themeCombo->setItemData(5, "ocean");
     m_themeCombo->setItemData(6, "dark");
     auto* themeLabel = new QLabel(tr("🎨 配色主题"));
-    themeLabel->setStyleSheet("font-weight: 600; color: #0f172a; font-size: 13px;");
+    themeLabel->setStyleSheet("font-weight: 600; color: #1e293b; font-size: 13px; background: transparent; border: none;");
     appearanceLayout->addRow(themeLabel, m_themeCombo);
 
     tabs->addTab(appearanceTab, tr("外观"));
@@ -125,9 +131,17 @@ void SettingsDialog::setupUi() {
 
     mainLayout->addWidget(tabs);
 
-    // Buttons
+    // Buttons - modern styled
     auto* btnLayout = new QHBoxLayout();
+    btnLayout->setSpacing(10);
     btnLayout->addStretch();
+    m_resetBtn->setProperty("flat", true);
+    m_resetBtn->setCursor(Qt::PointingHandCursor);
+    m_resetBtn->setMinimumHeight(36);
+    m_applyBtn->setProperty("primaryBtn", true);
+    m_applyBtn->setCursor(Qt::PointingHandCursor);
+    m_applyBtn->setMinimumWidth(110);
+    m_applyBtn->setMinimumHeight(36);
     btnLayout->addWidget(m_resetBtn);
     btnLayout->addWidget(m_applyBtn);
     mainLayout->addLayout(btnLayout);
